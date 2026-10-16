@@ -1015,6 +1015,11 @@ class RabbitVisuals(Entity):
         # time.time() in float32 freezes the sine; and phase continuity
         # survives speed changes). dt-capped like the physics step.
         rabbit_phase[:] += speed * 2.0 * min(max(time.dt, 0.0), 0.05)
+        # a rabbit that stops mid-hop must settle onto the ground: snap the
+        # frozen phase to the nearest multiple of pi (hop = |sin| = 0 there)
+        still = speed < 0.01
+        if still.any():
+            rabbit_phase[still] = np.round(rabbit_phase[still] / np.pi) * np.pi
         hop = np.abs(np.sin(rabbit_phase)) * 0.3
         yaws = np.arctan2(rabbit_vel[:, 0], rabbit_vel[:, 2])
         c, s = np.cos(yaws), np.sin(yaws)

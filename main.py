@@ -613,12 +613,15 @@ def _hawk_observations(pos_np, vel_np):
     obs[:, 5] = np.einsum('ij,ij->i', r, vn)
     obs[:, 6] = np.einsum('ij,ij->i', u, vn)
     obs[:, 7] = np.clip(clearance / 50.0, 0.0, 1.0)
-    # --- arena awareness (in [-1,1]): wall-repulsion vector in world XZ ---
+    # --- arena awareness (in [-1,1]): wall-proximity vector in world XZ.
+    # Points INWARD (-sign) with magnitude ramping 0 -> 1 as the hawk nears
+    # the wall (inside wall_sensor): a repulsion warning that is LOUDEST at
+    # the wall. (The old form ramped 1 -> 0, vanishing exactly when scraping.)
     half = TERRAIN_SIZE / 2 - 1.0
     wall_sensor = 100.0
-    rep_x = np.clip((half - np.abs(pack_pos[:, 0])) / wall_sensor, 0.0, 1.0) * -np.sign(pack_pos[:, 0])
-    rep_z = np.clip((half - np.abs(pack_pos[:, 2])) / wall_sensor, 0.0, 1.0) * -np.sign(pack_pos[:, 2])
-    obs[:, 8] = rep_x * f[:, 0] + rep_z * f[:, 2]   # "the open arena is ahead"
+    rep_x = (1.0 - np.clip((half - np.abs(pack_pos[:, 0])) / wall_sensor, 0.0, 1.0)) * -np.sign(pack_pos[:, 0])
+    rep_z = (1.0 - np.clip((half - np.abs(pack_pos[:, 2])) / wall_sensor, 0.0, 1.0)) * -np.sign(pack_pos[:, 2])
+    obs[:, 8] = rep_x * f[:, 0] + rep_z * f[:, 2]   # "safety is ahead"
     obs[:, 9] = rep_x * r[:, 0] + rep_z * r[:, 2]   # "...is to my right"
     edge = np.minimum(half - np.abs(pack_pos[:, 0]), half - np.abs(pack_pos[:, 2]))
     obs[:, 10] = np.clip(edge / wall_sensor, 0.0, 1.0)   # 0 = at wall, 1 = safe

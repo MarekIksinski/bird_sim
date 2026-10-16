@@ -1011,7 +1011,11 @@ class RabbitVisuals(Entity):
         update_rabbits()
         # hop modulation: bounce scales with ground speed -> still rabbits sit flat
         speed = np.linalg.norm(rabbit_vel, axis=1)
-        hop = np.abs(np.sin(time.time() * speed * 2.0)) * 0.3
+        # phase INTEGRATED per rabbit (see rabbit_phase note: epoch-scale
+        # time.time() in float32 freezes the sine; and phase continuity
+        # survives speed changes). dt-capped like the physics step.
+        rabbit_phase[:] += speed * 2.0 * min(max(time.dt, 0.0), 0.05)
+        hop = np.abs(np.sin(rabbit_phase)) * 0.3
         yaws = np.arctan2(rabbit_vel[:, 0], rabbit_vel[:, 2])
         c, s = np.cos(yaws), np.sin(yaws)
         verts = np.tile(self.rabbit_shape, (NUM_RABBITS, 1, 1))
@@ -1024,6 +1028,13 @@ class RabbitVisuals(Entity):
         self.model.generate()
 
 rabbits = RabbitVisuals()
+
+# Hop phase accumulator: time.time() is epoch-scale (~1.8e9) and
+# time.time() * speed is computed in float32, whose ulp there is 128 —
+# the sine argument stays frozen for minutes. Integrate phase per-rabbit
+# in float32 instead (small accumulating values), which also keeps the
+# gait continuous when speed changes instead of re-phasing on a jump.
+rabbit_phase = np.zeros(NUM_RABBITS, dtype=np.float32)
 
 # The hawk pack — small colored wedges (stretched cubes read as darts)
 pack_entities = []

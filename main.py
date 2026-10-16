@@ -347,7 +347,11 @@ for i in range(60):
     e.y += e.scale_y / 2
 
 # --- 3. GPU PHYSICS (Topological) ---
-pos_gpu = (cp.random.random((NUM_BIRDS, 3)).astype(cp.float32) * 40 - 20) + cp.array([0, ROOST_BASE_ALTITUDE, 0])
+# dtype=float32 is REQUIRED: an untyped cp.array([0, alt, 0]) is int-float64
+# mixed -> the sum promotes pos_gpu to float64, and the whole N x N distance/
+# argsort/neighbor chain then runs in double precision (2x the memory: 72MB
+# vs 36MB per matrix at 3000 birds, and far slower on consumer GPUs).
+pos_gpu = (cp.random.random((NUM_BIRDS, 3)).astype(cp.float32) * 40 - 20) + cp.array([0, ROOST_BASE_ALTITUDE, 0], dtype=cp.float32)
 vel_gpu = cp.random.random((NUM_BIRDS, 3)).astype(cp.float32) - 0.5
 vel_gpu = vel_gpu / cp.linalg.norm(vel_gpu, axis=1, keepdims=True) * MAX_SPEED
 

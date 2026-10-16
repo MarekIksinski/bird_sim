@@ -52,7 +52,7 @@ dogfight_gain = 2.0         # per-frame reward for tail-chasing (range x aim ali
 boundary_penalty = 0.4      # per-frame penalty for scraping wall/ceiling
 boundary_scrape_dist = 15.0  # meters from wall (or below ceiling) counted as scraping
 persist = true              # keep evolved weights between runs
-save_folder = "evolution2"   # folder next to main.py: population.npz + history.csv
+save_folder = "evolution"   # folder next to main.py: population.npz + history.csv
 
 [hawk_vs_flock]
 panic_radius = 12.0       # birds inside this flee

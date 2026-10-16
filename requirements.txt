@@ -1,0 +1,7 @@
+# bird_sim — needs Python 3.12 (system 3.14 is too new for ursina)
+# GPU path is optional: cupy only works when VRAM is free; the sim
+# falls back to NumPy CPU automatically. See main.py backend probe.
+ursina==8.3.0
+panda3d==1.10.16
+numpy==2.5.4
+cupy-cuda12x==14.2.0 ; platform_machine == "x86_64"

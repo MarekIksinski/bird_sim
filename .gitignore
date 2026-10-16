@@ -1,0 +1,15 @@
+# runtime state
+.venv/
+__pycache__/
+*.pyc
+
+# evolution checkpoints & history (runtime state, not source)
+evolution/
+evolution2/
+
+# logs / scratch
+*.log
+scratch/
+
+# raw source model (14MB; the sim renders assets/hawk.glb)
+hawk.stl

@@ -539,14 +539,29 @@ def load_checkpoint():
             print(f"[persist] could not load starling checkpoint ({e}); tribes start fresh")
 
 def save_checkpoint():
+    """Persist the CURRENT population under the CURRENT generation number.
+    Call AFTER evolve_generation has built the new population and bumped
+    `generation` — a checkpoint must always be a consistent (gen, pop) pair,
+    otherwise a resume replays the previous generation's already-evaluated
+    genomes and silently skips one selection step."""
     if not PERSIST:
         return
     try:
         os.makedirs(EVOLVE_DIR, exist_ok=True)
-        np.savez(_CKPT, population=population, generation=generation + 1,
+        np.savez(_CKPT, population=population, generation=generation,
                  total_catches=total_catches)
         np.savez(_STARLING_CKPT, tribe_pop=tribe_pop,
                  starling_evolutions=starling_evolutions)
+    except Exception as e:
+        print(f"[persist] could not save checkpoint ({e})")
+
+def append_history():
+    """One progression row per completed generation. Must run while fitness
+    and gen_kills still hold this generation's results (i.e. BEFORE they are
+    zeroed for the next one)."""
+    if not PERSIST:
+        return
+    try:
         new = not os.path.exists(_HISTORY)
         with open(_HISTORY, 'a') as fh:
             if new:
@@ -554,7 +569,7 @@ def save_checkpoint():
             fh.write(f'{generation},{fitness.max():.1f},{fitness.mean():.1f},'
                      f'{int(gen_kills.sum())}\n')
     except Exception as e:
-        print(f"[persist] could not save checkpoint ({e})")
+        print(f"[persist] could not write history ({e})")
 
 load_checkpoint()
 # a loaded starling checkpoint replaces tribe_pop -> re-upload cp layer tensors
@@ -756,7 +771,9 @@ def evolve_generation():
     order = np.argsort(-fitness)
     print(f"[evolution] gen {generation}: best fitness {fitness[order[0]]:.0f}, "
           f"kills best {gen_kills[order[0]]}, total {gen_kills.sum()}")
-    save_checkpoint()
+    # history row FIRST: fitness/gen_kills still hold THIS generation's
+    # results (and `generation` is still the completed gen's number).
+    append_history()
     new_pop = np.empty_like(population)
     # --- Tier 1: champion lineage (exploitation) ---
     new_pop[0] = population[order[0]]                       # untouched champion
@@ -779,6 +796,10 @@ def evolve_generation():
     generation += 1
     gen_elapsed = 0.0
     sel_idx = 0
+    # checkpoint AFTER the selection step: the saved (population, generation)
+    # pair is exactly what the next generation will fly, so a resume never
+    # replays already-evaluated genomes or skips a selection round.
+    save_checkpoint()
     respawn_pack()
 
 # (the batched per-frame weight stacking happens in update_pack/_stack_population)

@@ -78,7 +78,10 @@ def update_camera_and_hud():
         track = predators.sel_idx if curr_mode == 2 else predators.best_idx
         _spd = float(predators.pack_speed[track])
         _cruise, _boost = CRUISE_SPEED, PRED_BOOST
-    speed_ratio = max(0.0, (_spd - _cruise) / max(_boost - _cruise, 1e-6))
+    # speed_ratio scales 0 at cruise -> 1 at boost -> up to 1.35 in a steep
+    # stoop (pack/player speed can now exceed PRED_BOOST up to DIVE_MAX_SPEED):
+    # dives get an extra FOV rush without blowing out the projection.
+    speed_ratio = min(1.35, max(0.0, (_spd - _cruise) / max(_boost - _cruise, 1e-6)))
     target_fov = BASE_FOV + (BOOST_FOV - BASE_FOV) * speed_ratio
     camera.fov = lerp(float(camera.fov), float(target_fov), cdt * 4.0)
     if curr_mode == 1:

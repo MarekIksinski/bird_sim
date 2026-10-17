@@ -132,12 +132,38 @@ def update_player():
                            player_q[None, :])[0]
     player_q /= max(float(np.linalg.norm(player_q)), 1e-9)
 
-    # --- throttle: same smooth approach + speed targets as the pack ---
+    # --- STALL RECOVERY: identical to the pack — below STALL_SPEED with the
+    # nose pitched up, lift is gone and gravity drops the nose toward the
+    # horizon (minimum-rotation about cross(f, down), degenerate -> +X). ---
+    f, r, u = player_axes()
+    f1 = f[None, :]
+    if player_speed < config.STALL_SPEED and f[1] > 0.0:
+        stall_factor = min(max((config.STALL_SPEED - player_speed)
+                               / max(config.STALL_SPEED - config.MIN_FLIGHT_SPEED, 1e-6), 0.0), 1.0)
+        down_vec = np.zeros((1, 3)); down_vec[0, 1] = -1.0
+        stall_axis = np.cross(f1, down_vec)
+        if np.linalg.norm(stall_axis, axis=1)[0] < 1e-6:
+            stall_axis[0] = (1.0, 0.0, 0.0)
+        stall_turn = stall_factor * max(float(f[1]), 0.0) * 75.0 * adt
+        player_q[:] = _q_mul_b(_q_from_aa_b(stall_axis, np.array([stall_turn])),
+                               player_q[None, :])[0]
+        player_q /= max(float(np.linalg.norm(player_q)), 1e-9)
+        f, r, u = player_axes()
+        f1 = f[None, :]
+
+    # --- throttle: same targets + dual-rate blend as the pack: gentler
+    # drag decay (0.8) above the target so dive momentum carries through
+    # the swoop, snappier thrust (1.5) below it. ---
     if thr >= 0:
         target = config.PLAYER_CRUISE_SPEED + thr * (config.PLAYER_BOOST_SPEED - config.PLAYER_CRUISE_SPEED)
     else:
         target = config.PLAYER_CRUISE_SPEED * (1.0 + thr * (1.0 - config.PLAYER_SLOW_FACTOR))
-    player_speed += (target - player_speed) * min(time.dt * 1.5, 1.0)
+    blend_rate = 0.8 if player_speed > target else 1.5
+    player_speed += (target - player_speed) * min(adt * blend_rate, 1.0)
+    # --- gravity energy exchange (same as the pack): stoop builds speed up
+    # to DIVE_MAX_SPEED, climbing bleeds it down toward MIN_FLIGHT_SPEED. ---
+    player_speed += (-config.HAWK_GRAVITY * float(f[1])) * adt
+    player_speed = float(np.clip(player_speed, config.MIN_FLIGHT_SPEED, config.DIVE_MAX_SPEED))
 
     # --- velocity always along the nose ---
     f, r, u = player_axes()

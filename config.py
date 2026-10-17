@@ -56,6 +56,14 @@ VERTICAL_SPEED = _get('flock', 'vertical_speed', 0.02)      # rad/s — slow swo
 VERTICAL_AMPLITUDE = _get('flock', 'vertical_amplitude', 15.0)  # meters up/down
 MAX_SPEED = _get('flock', 'max_speed', 2.2)
 MAX_FORCE = _get('flock', 'max_force', 0.1)
+# --- starling pitch-gravity energy exchange (per-frame-at-60 units) ---
+# Diving birds accelerate along their path and get a HIGHER dynamic speed
+# cap; climbing birds bleed speed and hit a LOWER cap; no bird ever stalls
+# to zero in mid-air (MIN_BIRD_SPEED floor).
+FLOCK_GRAVITY = float(_get('flock', 'gravity', 0.035))       # pitch acceleration along f_y
+MIN_BIRD_SPEED = float(_get('flock', 'min_bird_speed', 0.8)) # minimum airspeed floor
+DIVE_SPEED_MULT = float(_get('flock', 'dive_speed_mult', 1.35))   # max speed multiplier diving straight down
+CLIMB_SPEED_MULT = float(_get('flock', 'climb_speed_mult', 0.65)) # max speed multiplier climbing straight up
 
 # --- 1c. FLOCK NN (tribe co-evolution) ---
 NUM_TRIBES = int(_get('flock_nn', 'num_tribes', 20))
@@ -86,6 +94,13 @@ FORCE_FLEE = _get('hawk_vs_flock', 'force_flee', 2.0)
 PANIC_MAX_SPEED = _get('hawk_vs_flock', 'panic_max_speed', 3.4)
 CATCH_RADIUS = _get('hawk_vs_flock', 'catch_radius', 1.2)
 MAX_ALTITUDE = _get('hawk', 'max_altitude', 80.0)  # ceiling: keep map edges hidden
+# --- aerodynamic gravity (potential <-> kinetic energy exchange) ---
+# Hawks trade altitude for airspeed: pitching the nose down (f_y < 0)
+# accelerates along the flight path, pulling up (f_y > 0) bleeds speed.
+HAWK_GRAVITY = float(_get('hawk', 'gravity', 2.2))        # m/s^2-equivalent along pitch f_y
+DIVE_MAX_SPEED = float(_get('hawk', 'dive_max_speed', 6.8))  # terminal velocity in a steep stoop (above PRED_BOOST)
+MIN_FLIGHT_SPEED = float(_get('hawk', 'min_flight_speed', 0.9))  # airspeed floor: hawks never hover
+STALL_SPEED = float(_get('hawk', 'stall_speed', 1.4))     # below this, a climbing nose gently drops toward the horizon
 
 # --- 1d. PLAYER (spectator hawk) ---
 # Separate flight feel + key bindings from the AI pack. Speed/rate values

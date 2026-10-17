@@ -10,13 +10,21 @@ NumPy when VRAM is tight).
 
 - **Starling flock** — topological boids (7 nearest neighbours) over a
   procedural fBm heightmap, with a migrating roost that sweeps the map on an
-  never-closing orbit + vertical wave.
+  never-closing orbit + vertical wave. Pitch-gravity energy exchange: diving
+  birds accelerate along their path (dynamic speed cap up to 1.35x), climbing
+  birds bleed speed (down to 0.65x), and a minimum airspeed floor keeps every
+  bird flying — no hovering mid-air stalls.
 - **Flock neural nets** — one small MLP per tribe (birds split into
-  contiguous blocks). Tribes co-evolve against the hawks via a Moran
-  process: tribes that take sustained casualties get replaced by mutated
-  copies of the current top performers.
+  contiguous blocks; 17 observations incl. airspeed + vertical pitch so
+  tribes can sense and exploit gravity). Tribes co-evolve against the hawks
+  via a Moran process: tribes that take sustained casualties get replaced by
+  mutated copies of the current top performers.
 - **Hawk pack (neuroevolution)** — a population of hawks, each flown by an
-  MLP (12 observations -> 4 controls: yaw/pitch/roll rates + throttle).
+  MLP (14 observations -> 4 controls: yaw/pitch/roll rates + throttle;
+  observations include airspeed and nose pitch). Aerodynamic gravity trades
+  altitude for airspeed: a stoop accelerates past boost toward the dive
+  ceiling, a climb bleeds speed, and a nose-up hawk below the stall speed
+  drops its nose back toward the horizon.
   True 6-DOF quaternion flight, arena/ceiling deflection, dense shaped
   fitness (proximity ramp + dogfight alignment bonus + catches, minus
   ground/wall/ceiling scrapes). Between generations, a **3-tiered
@@ -26,10 +34,11 @@ NumPy when VRAM is tight).
   (Forage / Vigilance / Freeze / Flee) that react to the nearest hawk and
   sprint to invisible burrows, diving underground when cornered.
 - **Spectator hawk (player)** — a keyboard-piloted hawk flying the same
-  6-DOF quaternion physics, wall/ceiling deflection and ground clearance as
-  the AI pack, but a pure ghost: starlings and rabbits never see it, it
-  cannot catch birds, and generation resets never touch it. Its flight feel
-  (speeds, rates, key bindings) is configured separately in `[player]`.
+  6-DOF quaternion physics, wall/ceiling deflection, gravity stoop/climb
+  energy exchange, stall nose-drop and ground clearance as the AI pack, but
+  a pure ghost: starlings and rabbits never see it, it cannot catch birds,
+  and generation resets never touch it. Its flight feel (speeds, rates, key
+  bindings) is configured separately in `[player]`.
 
 ## Running
 
@@ -39,7 +48,10 @@ NumPy when VRAM is tight).
 ```
 
 All tunables live in `config.toml` (flock, hawk, player, pack, rabbits,
-terrain, game). The `[player]` section overrides the spectator hawk's
+terrain, game). Gravity/dive knobs: `[hawk]` `gravity`, `dive_max_speed`,
+`min_flight_speed`, `stall_speed` (shared by the player) and `[flock]`
+`gravity`, `min_bird_speed`, `dive_speed_mult`, `climb_speed_mult`.
+The `[player]` section overrides the spectator hawk's
 speeds/rates (falling back to `[hawk]` values when a line is removed) and
 its key bindings (`<action>_keys` = a key name or a list of them).
 Evolution checkpoints persist in the folder set by `[pack] save_folder`.
@@ -109,3 +121,11 @@ main.py       entrypoint orchestrator (init order + global input/update)
 - `tools/verify_player_cfg.py` — checks the `[player]` config section:
   speed/rate overrides, `[hawk]` fallbacks, and string/list key bindings.
   Run: `.venv/bin/python tools/verify_player_cfg.py`
+- `tools/verify_gravity_cfg.py` — checks the gravity constants parse, the
+  14/17-input net shapes, and that fresh populations match the new genome
+  lengths. Run: `.venv/bin/python tools/verify_gravity_cfg.py`
+- `tools/verify_gravity.py` — offscreen harness for the gravity physics:
+  player + pack dive acceleration past boost, climb speed bleed, stall
+  nose-drop recovery, the never-hover speed floor, the flock's dynamic
+  dive/climb speed caps and MIN_BIRD_SPEED floor over a 180-frame soak.
+  Run: `DISPLAY=:0 .venv/bin/python tools/verify_gravity.py`

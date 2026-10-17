@@ -21,7 +21,9 @@ from config import (NUM_BIRDS, NEIGHBOR_COUNT, SEPARATION_DIST, ROOST_RADIUS,
                     MAX_SPEED, MAX_FORCE, NUM_TRIBES, BIRDS_PER_TRIBE,
                     STARLING_MUTATION_SIGMA, TRIBE_REPLACE_DEATHS,
                     CASUALTY_DECAY, TERRAIN_SIZE, PANIC_RADIUS, FORCE_FLEE,
-                    PANIC_MAX_SPEED, GENERATION_SECONDS)
+                    PANIC_MAX_SPEED, GENERATION_SECONDS,
+                    FLOCK_GRAVITY, MIN_BIRD_SPEED, DIVE_SPEED_MULT,
+                    CLIMB_SPEED_MULT)
 import predators
 import terrain
 
@@ -42,7 +44,10 @@ roost_center = cp.array([0, ROOST_BASE_ALTITUDE, 0], dtype=cp.float32)
 # CONTIGUOUS blocks (bird i -> tribe i // BIRDS_PER_TRIBE) so the forward
 # pass reshapes to (T, BIRDS_PER_TRIBE, n) and einsums against tiny
 # (T, ni, no) weights — fast on CPU cache AND on GPU, identical code paths.
-STARLING_NET_SHAPE = (15, 16, 8, 6)
+# (17 inputs since the gravity update: +bird airspeed, +vertical pitch f_y,
+# so tribes can learn to dive for speed and manage climb stalls. The
+# starling checkpoint shape guard starts fresh tribes on mismatch.)
+STARLING_NET_SHAPE = (17, 16, 8, 6)
 STARLING_GENOME_LEN = sum(STARLING_NET_SHAPE[i] * STARLING_NET_SHAPE[i+1] +
                           STARLING_NET_SHAPE[i+1] for i in range(len(STARLING_NET_SHAPE) - 1))
 bird_tribe_np = np.arange(NUM_BIRDS) // BIRDS_PER_TRIBE
@@ -221,7 +226,7 @@ def update_boids_gpu():
     align_norm = avg_vel / MAX_SPEED
     sep_norm = sep_force / (cp.linalg.norm(sep_force, axis=1, keepdims=True) + 1.0)
 
-    obs_gpu = cp.empty((NUM_BIRDS, 15), dtype=cp.float32)
+    obs_gpu = cp.empty((NUM_BIRDS, 17), dtype=cp.float32)
     # threat: nearest-hawk direction in the local frame + proximity
     obs_gpu[:, 0] = cp.sum(nearest_dir_gpu * f, axis=1)
     obs_gpu[:, 1] = cp.sum(nearest_dir_gpu * r, axis=1)
@@ -240,9 +245,16 @@ def update_boids_gpu():
     # environment: ground clearance + roost distance
     obs_gpu[:, 13] = cp.clip(clearance_obs / 25.0, -1.0, 1.0)
     obs_gpu[:, 14] = cp.clip(dist_to_roost[:, 0] / ROOST_RADIUS, 0.0, 1.0)
+    # --- gravity proprioception: airspeed (0 at the MIN_BIRD_SPEED floor,
+    # +1 at the deepest-dive cap) + vertical pitch f_y so tribes can feel
+    # the stoop/climb energy exchange and learn to dive for speed.
+    obs_gpu[:, 15] = cp.clip((speed_cur[:, 0] - MIN_BIRD_SPEED)
+                             / (PANIC_MAX_SPEED * DIVE_SPEED_MULT - MIN_BIRD_SPEED) * 2.0 - 1.0,
+                             -1.0, 1.0)
+    obs_gpu[:, 16] = cp.clip(f[:, 1], -1.0, 1.0)
     cp.clip(obs_gpu, -1.0, 1.0, out=obs_gpu)
 
-    a = obs_gpu.reshape(NUM_TRIBES, BIRDS_PER_TRIBE, 15)
+    a = obs_gpu.reshape(NUM_TRIBES, BIRDS_PER_TRIBE, 17)
     for W, b in zip(tribe_Ws, tribe_bs):
         a = cp.tanh(cp.einsum('tbi,tio->tbo', a, W) + b[:, None, :])
     out_gpu = a.reshape(NUM_BIRDS, 6)
@@ -264,9 +276,29 @@ def update_boids_gpu():
     # Update Physics (acceleration scaled by delta time)
     vel_gpu += total_force * dt_scale
 
-    # Clamp Speed
+    # --- PITCH-GRAVITY ENERGY EXCHANGE (starlings): push velocity ALONG
+    # the flight trajectory. Nose down (f_y<0) converts height into speed;
+    # nose up bleeds it. Applied along f_cur (not as a raw world -Y pull)
+    # so the flock's overall altitude is not dragged below the roost. ---
+    speed_cur2 = cp.linalg.norm(vel_gpu, axis=1, keepdims=True) + 1e-6
+    f_cur = vel_gpu / speed_cur2
+    vel_gpu += f_cur * (-FLOCK_GRAVITY * f_cur[:, 1:2]) * dt_scale
+    # slight extra vertical climb resistance: steep climbs need real effort
+    vel_gpu[:, 1] -= 0.008 * cp.maximum(f_cur[:, 1], 0.0) * dt_scale
+
+    # --- Dynamic speed caps: diving raises the cruise/panic ceiling toward
+    # DIVE_SPEED_MULT (1.35x at straight-down), climbing lowers it toward
+    # CLIMB_SPEED_MULT (0.65x at straight-up) — a stooping starling can
+    # outrun a level-flying one, a climbing one bails slower. ---
+    f_y = f_cur[:, 1:2]
+    pitch_mult = cp.where(f_y < 0,
+                          1.0 - f_y * (DIVE_SPEED_MULT - 1.0),
+                          1.0 - f_y * (1.0 - CLIMB_SPEED_MULT))
+    max_spd_dyn = MAX_SPEED * pitch_mult
+
+    # Clamp Speed (dynamic cruise cap)
     speed = cp.linalg.norm(vel_gpu, axis=1, keepdims=True)
-    vel_gpu = cp.where(speed > MAX_SPEED, vel_gpu / speed * MAX_SPEED, vel_gpu)
+    vel_gpu = cp.where(speed > max_spd_dyn, vel_gpu / speed * max_spd_dyn, vel_gpu)
 
     # 7. PREDATOR PANIC (applied after clamp -> overrides cruise speed).
     # Instinct flee baseline blended with the NN's learned evasive juke
@@ -276,9 +308,11 @@ def update_boids_gpu():
     nn_evade_world = (out_gpu[:, 3:4] * f + out_gpu[:, 4:5] * r + out_gpu[:, 5:6] * u)
     evade_vec = 0.25 * flee_gpu + 0.75 * nn_evade_world * threat_scale
     vel_gpu += evade_vec * FORCE_FLEE * dt_scale
-    # clamp raw velocity (dt_scale is applied later, only to position)
+    # clamp raw velocity (dt_scale is applied later, only to position);
+    # the panic ceiling also follows the pitch multiplier (dive = faster escape)
+    panic_spd_dyn = PANIC_MAX_SPEED * pitch_mult
     speed = cp.linalg.norm(vel_gpu, axis=1, keepdims=True)
-    vel_gpu = cp.where(speed > PANIC_MAX_SPEED, vel_gpu / speed * PANIC_MAX_SPEED, vel_gpu)
+    vel_gpu = cp.where(speed > panic_spd_dyn, vel_gpu / speed * panic_spd_dyn, vel_gpu)
 
     # 8. CAUGHT birds respawn at the roost (orbiting — respawn follows it)
     if caught_np.any():
@@ -296,6 +330,15 @@ def update_boids_gpu():
     ground_np = np.asarray(terrain.height_at(pos_np2[:, 0], pos_np2[:, 2]))
     clearance = pos_gpu[:, 1] - cp.array(ground_np, dtype=cp.float32)
     vel_gpu[:, 1] += cp.where(clearance < 3.0, 0.5, cp.where(clearance < 6.0, 0.15, 0)) * dt_scale
+
+    # --- MIN_BIRD_SPEED floor: a starling never stalls to zero in mid-air
+    # (birds keep flying even at the bottom of a climb). Placed AFTER the
+    # floor-avoidance boost: that boost can cancel a diving bird's vertical
+    # velocity, and re-enforcing here guarantees the final vel_gpu respects
+    # the airspeed floor. ---
+    speed = cp.linalg.norm(vel_gpu, axis=1, keepdims=True)
+    vel_gpu = cp.where(speed < MIN_BIRD_SPEED,
+                       vel_gpu / cp.maximum(speed, 1e-6) * MIN_BIRD_SPEED, vel_gpu)
 
     # Position integration (velocity is per-frame-at-60; dt_scale makes it
     # framerate-independent. Speed clamps above operate on raw vel_gpu.)

@@ -24,7 +24,9 @@ from config import (POPULATION_SIZE, NUM_BIRDS, MUTATION_TINY,
                     BOUNDARY_PENALTY, BOUNDARY_SCRAPE, PERSIST, EVOLVE_DIR,
                     TERRAIN_SIZE, MAX_ALTITUDE, PANIC_RADIUS, CATCH_RADIUS,
                     PRED_BOOST, CRUISE_SPEED, SLOW_FACTOR, YAW_RATE,
-                    PITCH_RATE, ROLL_SPEED, PANIC_MAX_SPEED)
+                    PITCH_RATE, ROLL_SPEED, PANIC_MAX_SPEED,
+                    HAWK_GRAVITY, DIVE_MAX_SPEED, MIN_FLIGHT_SPEED,
+                    STALL_SPEED)
 import terrain
 from math3d import _q_mul_b, _q_from_aa_b, _q_rot_b
 
@@ -68,8 +70,11 @@ def respawn_pack():
     pack_q[:] = _q_from_aa_b(ax, yaw)
 
 # --- 3c. NEURAL PACK (neuroevolution) ---
-# MLP 12 -> 16 -> 8 -> 4, tanh everywhere; genome = flattened weights+biases.
-NET_SHAPE = (12, 16, 8, 4)
+# MLP 14 -> 16 -> 8 -> 4, tanh everywhere; genome = flattened weights+biases.
+# (14 inputs since the gravity update: +airspeed, +nose pitch f_y — the pack
+# can now sense and exploit diving/climb stalls. GENOME_LEN recomputes
+# automatically and the checkpoint shape guard starts a fresh evolution.)
+NET_SHAPE = (14, 16, 8, 4)
 GENOME_LEN = sum(NET_SHAPE[i] * NET_SHAPE[i+1] + NET_SHAPE[i+1] for i in range(len(NET_SHAPE) - 1))
 # observation normalisation for the target-velocity inputs
 OBS_VEL_SCALE = PANIC_MAX_SPEED
@@ -219,13 +224,15 @@ def _nearest_bird_np(pos_np, vel_np):
     return direction, dist, near_vel, near_pos
 
 def _hawk_observations(pos_np, vel_np):
-    """12 normalized inputs per hawk: line-of-sight axis cues, clamped
+    """14 normalized inputs per hawk: line-of-sight axis cues, clamped
     distance, target-velocity axis cues, terrain clearance, arena awareness
-    (wall-repulsion projected on f/r, edge proximity, ceiling clearance)."""
+    (wall-repulsion projected on f/r, edge proximity, ceiling clearance),
+    plus two proprioceptive gravity sensors: current airspeed and nose
+    pitch f_y (+1 up / -1 down) so the brain can feel and exploit gravity."""
     f, r, u = pack_axes()
     direction, dist, near_vel, _ = _nearest_bird_np(pos_np, vel_np)
     clearance = pack_pos[:, 1] - terrain.height_at(pack_pos[:, 0], pack_pos[:, 2])
-    obs = np.empty((POPULATION_SIZE, 12), dtype=np.float64)
+    obs = np.empty((POPULATION_SIZE, 14), dtype=np.float64)
     obs[:, 0] = np.einsum('ij,ij->i', f, direction)
     obs[:, 1] = np.einsum('ij,ij->i', r, direction)
     obs[:, 2] = np.einsum('ij,ij->i', u, direction)
@@ -248,6 +255,12 @@ def _hawk_observations(pos_np, vel_np):
     edge = np.minimum(half - np.abs(pack_pos[:, 0]), half - np.abs(pack_pos[:, 2]))
     obs[:, 10] = np.clip(edge / wall_sensor, 0.0, 1.0)   # 0 = at wall, 1 = safe
     obs[:, 11] = np.clip((MAX_ALTITUDE - pack_pos[:, 1]) / 30.0, 0.0, 1.0)
+    # --- gravity proprioception: airspeed + nose pitch. The pack can now
+    # tell a fast stoop from a slow climb and learn to trade altitude for
+    # speed (dive) or spend speed to gain altitude (climb).
+    obs[:, 12] = np.clip((pack_speed - MIN_FLIGHT_SPEED)
+                         / (DIVE_MAX_SPEED - MIN_FLIGHT_SPEED) * 2.0 - 1.0, -1.0, 1.0)
+    obs[:, 13] = np.clip(f[:, 1], -1.0, 1.0)   # +1 nose straight up, -1 straight down
     return np.clip(obs, -1.0, 1.0)
 
 def update_predators(layers, pos_np, vel_np):
@@ -332,12 +345,42 @@ def update_predators(layers, pos_np, vel_np):
                          0.0) * adt              # deg/s rate, capped
     pack_q = _q_mul_b(_q_from_aa_b(ceil_axis, ceil_turn), pack_q)
     pack_q /= np.linalg.norm(pack_q, axis=1, keepdims=True)
-    # --- throttle: -1 slow .. 0 cruise .. +1 boost (smooth approach) ---
+    # --- STALL RECOVERY: wings lose lift below STALL_SPEED while the nose
+    # is pitched up, so gravity pulls the nose back down toward the horizon
+    # (the classic stall nose-drop). Same minimum-rotation construction as
+    # the ceiling deflection: rotate f toward straight down about cross(f,
+    # down), a degenerate cross (nose already straight down... impossible
+    # here since f_y>0 gates it, but guard anyway) falls back to +X.
+    f, r, u = pack_axes()
+    stalling = (f[:, 1] > 0.0) & (pack_speed < STALL_SPEED)
+    stall_factor = np.clip((STALL_SPEED - pack_speed)
+                           / max(STALL_SPEED - MIN_FLIGHT_SPEED, 1e-6), 0.0, 1.0)
+    down_vec = np.zeros((POPULATION_SIZE, 3)); down_vec[:, 1] = -1.0
+    stall_axis = np.cross(f, down_vec)
+    stall_degen = np.linalg.norm(stall_axis, axis=1) < 1e-6
+    stall_axis[stall_degen] = (1.0, 0.0, 0.0)
+    stall_turn = np.where(stalling,
+                          stall_factor * np.maximum(f[:, 1], 0.0) * 75.0,
+                          0.0) * adt            # deg/s rate, capped by adt
+    pack_q = _q_mul_b(_q_from_aa_b(stall_axis, stall_turn), pack_q)
+    pack_q /= np.linalg.norm(pack_q, axis=1, keepdims=True)
+    # --- throttle: -1 slow .. 0 cruise .. +1 boost, blended aerodynamically ---
     thr = out[:, 3]
     target = np.where(thr >= 0,
                       CRUISE_SPEED + thr * (PRED_BOOST - CRUISE_SPEED),
                       CRUISE_SPEED * (1.0 + thr * (1.0 - SLOW_FACTOR)))
-    pack_speed += (target - pack_speed) * min(time.dt * 1.5, 1.0)
+    # Dual-rate blend: ABOVE the throttle target use a gentler DRAG decay
+    # (0.8) so dive momentum carries through the swoop; below it the engine-
+    # like thrust blend stays snappy (1.5).
+    f, r, u = pack_axes()
+    blend_rate = np.where(pack_speed > target, 0.8, 1.5)
+    pack_speed += (target - pack_speed) * np.minimum(adt * blend_rate, 1.0)
+    # --- GRAVITY ENERGY EXCHANGE along the flight path: nose down (f_y<0)
+    # converts altitude into airspeed (stoop up to DIVE_MAX_SPEED, past
+    # PRED_BOOST); nose up (f_y>0) trades speed for height toward
+    # MIN_FLIGHT_SPEED. Clamped to the never-stall / terminal-velocity band.
+    pack_speed += (-HAWK_GRAVITY * f[:, 1]) * adt
+    pack_speed = np.clip(pack_speed, MIN_FLIGHT_SPEED, DIVE_MAX_SPEED)
     # --- velocity always along the nose ---
     f, r, u = pack_axes()
     pack_vel[:] = f * pack_speed[:, None]

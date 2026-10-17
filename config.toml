@@ -20,6 +20,10 @@ orbit_wobble_speed = 1.0   # scales the off-beat wave freqs (x1.37 X, x0.79 Z)
 roost_base_altitude = 45.0  # meters above terrain the roost cruises at
 vertical_speed = 0.02      # rad/s; slow Y swoop (0 = flat altitude)
 vertical_amplitude = 10.0  # meters above/below base altitude
+gravity = 0.035            # pitch-gravity: speed gain/loss per frame along f_y (dive accelerates, climb bleeds)
+min_bird_speed = 0.8       # airspeed floor: a starling never stalls to zero in mid-air
+dive_speed_mult = 1.35     # max-speed multiplier in a straight-down stoop
+climb_speed_mult = 0.65    # max-speed multiplier in a straight-up climb
 
 [hawk]
 cruise_speed = 2.5        # AI pack speed, throttle out = 0
@@ -29,6 +33,10 @@ yaw_rate = 80.0           # deg/s, NN output
 pitch_rate = 60.0         # deg/s, NN output
 roll_speed = 60.0         # deg/s, NN output
 max_altitude = 150.0      # sky barrier height (m); needs room for full loops
+gravity = 2.2             # pitch-gravity along the flight path: stoop builds speed, climb bleeds it
+dive_max_speed = 6.8      # terminal velocity in a steep stoop (above boost_speed)
+min_flight_speed = 0.9    # airspeed floor: a hawk never hovers
+stall_speed = 1.4         # below this, a nose-up hawk's wings stall and the nose drops
 base_fov = 100.0           # camera FOV at cruise speed
 boost_fov = 120.0         # camera FOV at full boost (Shift)
 

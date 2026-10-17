@@ -45,22 +45,37 @@ game). Evolution checkpoints persist in the folder set by
 | TAB | cycle the tracked hawk |
 | ESC | quit |
 
-## Files
+## Files / architecture
 
-- `main.py` — thin entrypoint orchestrator (Ursina init order + global
-  `input`/`update` callbacks + fog re-apply).
-- `backend.py` / `config.py` / `math3d.py` — CPU/GPU backend probe,
-  config.toml constants, batched quaternion math.
-- `terrain.py` / `predators.py` / `flock.py` / `rabbits.py` / `hud_cam.py`
-  — terrain + backdrop, hawk pack NN + speciation + checkpoints, starling
-  boids + tribe NNs + FlockVisuals, rabbit FSM + RabbitVisuals, camera/HUD.
+Strict bottom-up layering (each module only imports layers below it):
+
+```
+backend.py    --cpu / FORCE_CPU handling, CuPy VRAM probe, cp / np / to_cpu
+config.py     config.toml -> all uppercase constants + derived values
+math3d.py     pure NumPy batched quaternion math (_q_mul_b, _slerp_np, ...)
+terrain.py    heightmaps + height_at at import; entities via init_environment()
+predators.py  hawk pack state, neuroevolution, flight physics, checkpoints
+flock.py      starling state, tribe NNs, update_boids_gpu, FlockVisuals
+rabbits.py    ground-prey FSM, update_rabbits, RabbitVisuals
+hud_cam.py    camera modes, HUD text, keyboard handling
+main.py       entrypoint orchestrator (init order + global input/update)
+```
+
+- `main.py` imports `backend` before Ursina sees the command line (`--cpu`
+  is stripped there), then does: `Ursina(vsync=False)` -> `load_checkpoint()`
+  + `_upload_tribe_layers()` -> environment + `FlockVisuals` +
+  `RabbitVisuals` + hawk entities + HUD -> `respawn_pack()` -> fog re-apply
+  -> `app.run()`. No Ursina entity is ever created at module import time.
+- `predators` <-> `flock` reference each other only through lazy imports
+  inside functions (the starling checkpoint hooks in
+  `predators.load/save_checkpoint` read/write `flock.tribe_pop`).
+- Cross-module state is always reached via the module namespace
+  (`predators.best_idx`, `flock.pos_gpu`, ...) — `from module import var`
+  would go stale when evolution/updates rebind those names.
 - `config.toml` — live tunables.
 - `assets/hawk.glb` — hawk model (decimated GLB; Ursina can't load the raw
   STL, so the original 14 MB `hawk.stl` is gitignored).
-
-Import order matters: `main.py` imports `backend` before Ursina sees the
-command line (`--cpu` is stripped there), and all Ursina entities are built
-inside `init_*()` functions / classes instantiated after `Ursina()`.
-Cross-module state is always reached via the module namespace
-(`predators.best_idx`, `flock.pos_gpu`, ...) — `from module import var`
-would go stale when evolution rebinds those names.
+- `tools/verify_refactor.py` — offscreen harness that imports the real
+  modules, steps Ursina frames, and checks evolution, checkpoints (incl.
+  the starling round-trip), cameras and rabbits end to end.
+  Run: `DISPLAY=:0 .venv/bin/python tools/verify_refactor.py`

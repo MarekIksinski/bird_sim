@@ -57,9 +57,10 @@ else:
 if cp is None:
     # Shim: pretend numpy is cupy. numpy supports everything the sim uses
     # (argsort/where/linalg/float32). Only .get() is missing (C type, can't
-    # monkey-patch), so all reads go through to_cpu() below.
+    # be monkey-patched), so all reads go through to_cpu() below. (No fake
+    # cp.cuda attribute: `cp = np` makes that an in-place mutation of the
+    # shared numpy module, visible to every other importer.)
     cp = np
-    cp.cuda = None
 
 def to_cpu(arr):
     """cupy array -> numpy via .get(); numpy array passes through."""

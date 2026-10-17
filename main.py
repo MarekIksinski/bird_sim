@@ -33,7 +33,11 @@ if '--cpu' in sys.argv or os.environ.get('FORCE_CPU', '') == '1':
 if not _FORCE_CPU:
     try:
         import cupy as _cupy_probe
-        _free_mb = _cupy_probe.cuda.Device(0).mem_info[1] // (1024 * 1024)
+        # mem_info is (free, total) — index [0] is the free amount. (An old
+        # version read [1] = TOTAL, which made the "> 512 MB free" check
+        # almost always true and the log line misleading; the probe
+        # allocation below is what actually gated GPU use.)
+        _free_mb = _cupy_probe.cuda.Device(0).mem_info[0] // (1024 * 1024)
         # probe by actually allocating ~ what the sim needs — mem_info can be
         # stale/generous while other processes (llama.cpp) fill VRAM on demand
         _probe = _cupy_probe.zeros(64_000_000, dtype=_cupy_probe.float32)  # 256 MB

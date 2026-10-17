@@ -13,7 +13,7 @@ force_align = 0.4
 force_cohere = 0.4
 force_roost = 0.03
 force_center = 0.2
-roost_orbit_radius = 300.0  # meters; roost circles the map at this radius
+roost_orbit_radius = 200.0  # meters; roost circles the map at this radius
 roost_orbit_speed = 0.1    # rad/s; 0 = static roost
 orbit_wobble_radius = 0.4  # secondary wave amplitude, fraction of main radius
 orbit_wobble_speed = 1.0   # scales the off-beat wave freqs (x1.37 X, x0.79 Z)
@@ -36,7 +36,7 @@ boost_fov = 120.0         # camera FOV at full boost (Shift)
 # Spectator hawk (modes 4/5). Speeds/rates fall back to the [hawk] values
 # above when a line here is removed. Keys are Ursina key names: a string
 # or a list, e.g. pitch_down_keys = ["w", "up arrow"].
-cruise_speed = 2.5        # no throttle keys
+cruise_speed = 0.5        # no throttle keys
 boost_speed = 3.5         # boost key held
 slow_factor = 0.45        # slow key -> cruise * this
 yaw_rate = 80.0           # deg/s, yaw keys
@@ -45,10 +45,10 @@ roll_speed = 60.0         # deg/s, roll keys
 auto_coord = 0.35         # extra yaw per unit of bank (0 = raw yaw only)
 pitch_down_keys = ["w", "up arrow"]
 pitch_up_keys = ["s", "down arrow"]
-roll_left_keys = ["a", "left arrow"]
-roll_right_keys = ["d", "right arrow"]
-yaw_left_keys = "q"
-yaw_right_keys = "e"
+roll_left_keys = ["q", "left arrow"]
+roll_right_keys = ["e", "right arrow"]
+yaw_left_keys = "a"
+yaw_right_keys = "d"
 boost_keys = "left shift"
 slow_keys = "left control"
 reset_keys = "r"

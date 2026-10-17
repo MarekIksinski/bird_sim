@@ -47,8 +47,20 @@ game). Evolution checkpoints persist in the folder set by
 
 ## Files
 
-- `main.py` — everything: backend probe, terrain, boids, tribe NNs, hawk
-  NNs + speciation, rabbit FSM, batched-mesh visuals.
+- `main.py` — thin entrypoint orchestrator (Ursina init order + global
+  `input`/`update` callbacks + fog re-apply).
+- `backend.py` / `config.py` / `math3d.py` — CPU/GPU backend probe,
+  config.toml constants, batched quaternion math.
+- `terrain.py` / `predators.py` / `flock.py` / `rabbits.py` / `hud_cam.py`
+  — terrain + backdrop, hawk pack NN + speciation + checkpoints, starling
+  boids + tribe NNs + FlockVisuals, rabbit FSM + RabbitVisuals, camera/HUD.
 - `config.toml` — live tunables.
 - `assets/hawk.glb` — hawk model (decimated GLB; Ursina can't load the raw
   STL, so the original 14 MB `hawk.stl` is gitignored).
+
+Import order matters: `main.py` imports `backend` before Ursina sees the
+command line (`--cpu` is stripped there), and all Ursina entities are built
+inside `init_*()` functions / classes instantiated after `Ursina()`.
+Cross-module state is always reached via the module namespace
+(`predators.best_idx`, `flock.pos_gpu`, ...) — `from module import var`
+would go stale when evolution rebinds those names.

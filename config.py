@@ -101,6 +101,11 @@ HAWK_GRAVITY = float(_get('hawk', 'gravity', 2.2))        # m/s^2-equivalent alo
 DIVE_MAX_SPEED = float(_get('hawk', 'dive_max_speed', 6.8))  # terminal velocity in a steep stoop (above PRED_BOOST)
 MIN_FLIGHT_SPEED = float(_get('hawk', 'min_flight_speed', 0.9))  # airspeed floor: hawks never hover
 STALL_SPEED = float(_get('hawk', 'stall_speed', 1.4))     # below this, a climbing nose gently drops toward the horizon
+# --- aerodynamic drift (velocity decoupled from the instantaneous nose) ---
+# The flight path vector lags behind the nose: high-speed dives carve
+# sweeping arcs with momentum instead of snapping to the new heading.
+LIFT_GRIP = float(_get('hawk', 'lift_grip', 5.5))     # 1/s rate v_dir aligns toward nose f (lower = more drift/swoop)
+INDUCED_DRAG = float(_get('hawk', 'induced_drag', 1.8))  # airspeed bleed rate in high-AoA turns (f diverges from v_dir)
 
 # --- 1d. PLAYER (spectator hawk) ---
 # Separate flight feel + key bindings from the AI pack. Speed/rate values

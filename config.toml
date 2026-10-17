@@ -17,10 +17,10 @@ roost_orbit_radius = 200.0  # meters; roost circles the map at this radius
 roost_orbit_speed = 0.1    # rad/s; 0 = static roost
 orbit_wobble_radius = 0.4  # secondary wave amplitude, fraction of main radius
 orbit_wobble_speed = 1.0   # scales the off-beat wave freqs (x1.37 X, x0.79 Z)
-roost_base_altitude = 45.0  # meters above terrain the roost cruises at
+roost_base_altitude = 65.0  # meters above terrain the roost cruises at
 vertical_speed = 0.02      # rad/s; slow Y swoop (0 = flat altitude)
 vertical_amplitude = 10.0  # meters above/below base altitude
-gravity = 0.035            # pitch-gravity: speed gain/loss per frame along f_y (dive accelerates, climb bleeds)
+gravity = 0.015            # pitch-gravity: speed gain/loss per frame along f_y (dive accelerates, climb bleeds)
 min_bird_speed = 0.8       # airspeed floor: a starling never stalls to zero in mid-air
 dive_speed_mult = 1.35     # max-speed multiplier in a straight-down stoop
 climb_speed_mult = 0.65    # max-speed multiplier in a straight-up climb
@@ -37,6 +37,8 @@ gravity = 2.2             # pitch-gravity along the flight path: stoop builds sp
 dive_max_speed = 6.8      # terminal velocity in a steep stoop (above boost_speed)
 min_flight_speed = 0.9    # airspeed floor: a hawk never hovers
 stall_speed = 1.4         # below this, a nose-up hawk's wings stall and the nose drops
+lift_grip = 5.5           # 1/s: how fast the flight path follows the nose (lower = wider swoops, more drift)
+induced_drag = 1.8        # airspeed bleed per second of high-AoA slip (sharp turns cost speed)
 base_fov = 100.0           # camera FOV at cruise speed
 boost_fov = 120.0         # camera FOV at full boost (Shift)
 
@@ -44,7 +46,7 @@ boost_fov = 120.0         # camera FOV at full boost (Shift)
 # Spectator hawk (modes 4/5). Speeds/rates fall back to the [hawk] values
 # above when a line here is removed. Keys are Ursina key names: a string
 # or a list, e.g. pitch_down_keys = ["w", "up arrow"].
-cruise_speed = 0.5        # no throttle keys
+cruise_speed = 1.0        # no throttle keys
 boost_speed = 3.5         # boost key held
 slow_factor = 0.45        # slow key -> cruise * this
 yaw_rate = 80.0           # deg/s, yaw keys
@@ -89,15 +91,15 @@ catch_radius = 1.2        # touch = catch, bird respawns
 num_tribes = 20           # one shared MLP per tribe; birds split into contiguous blocks
 mutation_sigma = 0.06     # gaussian noise on offspring tribe weights
 replace_deaths = 10       # tribe loses this many birds -> replaced by mutated top-3 parent
-casualty_decay = 0.02     # per-second exponential fade of the casualty counter (0 = never decay)
+casualty_decay = 0.01     # per-second exponential fade of the casualty counter (0 = never decay)
 
 [terrain]
 size = 1200               # field width/depth
 cell = 1.2                # meters per grid cell (lower = more detail)
-amplitude = 10.0          # max hill height
+amplitude = 15.0          # max hill height
 seed = 5                  # change for a different world
 roost_clear_radius = 30.0 # flat bowl around the flock
-fog_density = 0.014      # visibility falloff
+fog_density = 0.024      # visibility falloff
 
 [game]
 start_camera = 2          # 1 fixed wide, 2 pack-chase (best hawk), 3 AI first-person (TAB cycles), 4 player chase, 5 player first-person

@@ -4,20 +4,30 @@ import sys, os, subprocess, tempfile, textwrap
 
 proj = '/home/marek/Playground/bird_sim'
 
-# --- variant A: the live config.toml (player section mirrors hawk) ---
+# --- variant A: the live config.toml — expected values read FROM the toml
+# itself (the user tunes it live; the harness must not hardcode them) ---
 code_a = textwrap.dedent('''
     import sys
     sys.path.insert(1, '/home/marek/Playground/bird_sim')
-    import config
-    assert config.PLAYER_CRUISE_SPEED == 2.5, config.PLAYER_CRUISE_SPEED
-    assert config.PLAYER_BOOST_SPEED == 3.5
-    assert config.PLAYER_YAW_RATE == 80.0 and config.PLAYER_PITCH_RATE == 60.0
-    assert config.PLAYER_ROLL_RATE == 60.0
-    assert config.PLAYER_AUTO_COORD == 0.35
-    assert config.PLAYER_KEYS['pitch_down'] == ('w', 'up arrow')
-    assert config.PLAYER_KEYS['yaw_left'] == ('q',)
-    assert config.PLAYER_KEYS['reset'] == ('r',)
-    print("PASS live config: player section parsed, values + keys correct")
+    import config, tomllib
+    with open('/home/marek/Playground/bird_sim/config.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    h, p = raw.get('hawk', {}), raw.get('player', {})
+    def expect(key, default):
+        return p.get(key, h.get(key, default))
+    assert config.PLAYER_CRUISE_SPEED == expect('cruise_speed', 2.4), config.PLAYER_CRUISE_SPEED
+    assert config.PLAYER_BOOST_SPEED == expect('boost_speed', 4.6)
+    assert config.PLAYER_YAW_RATE == expect('yaw_rate', 90.0)
+    assert config.PLAYER_PITCH_RATE == expect('pitch_rate', 60.0)
+    assert config.PLAYER_ROLL_RATE == expect('roll_speed', 120.0)
+    assert config.PLAYER_AUTO_COORD == p.get('auto_coord', 0.35)
+    def keymap(action, default):
+        v = p.get(action, default)
+        return (v,) if isinstance(v, str) else tuple(v)
+    assert config.PLAYER_KEYS['pitch_down'] == keymap('pitch_down_keys', ('w', 'up arrow'))
+    assert config.PLAYER_KEYS['yaw_left'] == keymap('yaw_left_keys', ('q',))
+    assert config.PLAYER_KEYS['reset'] == keymap('reset_keys', ('r',))
+    print("PASS live config: player section parsed, values + keys match config.toml")
 ''')
 
 # --- variant B: remapped keys + different speeds, in an isolated dir ---

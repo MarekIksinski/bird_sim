@@ -26,7 +26,7 @@ from config import (POPULATION_SIZE, NUM_BIRDS, MUTATION_TINY,
                     PRED_BOOST, CRUISE_SPEED, SLOW_FACTOR, YAW_RATE,
                     PITCH_RATE, ROLL_SPEED, PANIC_MAX_SPEED,
                     HAWK_GRAVITY, DIVE_MAX_SPEED, MIN_FLIGHT_SPEED,
-                    STALL_SPEED)
+                    STALL_SPEED, LIFT_GRIP, INDUCED_DRAG)
 import terrain
 from math3d import _q_mul_b, _q_from_aa_b, _q_rot_b
 
@@ -62,12 +62,16 @@ def respawn_pack():
     pack_pos[:, 0] = px
     pack_pos[:, 2] = pz
     pack_pos[:, 1] = terrain.height_at(px, pz) + 3.0
-    pack_vel[:] = 0.0
     pack_speed[:] = CRUISE_SPEED   # airborne from the drop
     # yaw to face the roost center (world-up rotation, 45deg default style)
     yaw = np.degrees(np.arctan2(rc[0] - px, rc[2] - pz))
     ax = np.zeros((POPULATION_SIZE, 3)); ax[:, 1] = 1.0
     pack_q[:] = _q_from_aa_b(ax, yaw)
+    # velocity rides the nose at spawn: with aerodynamic drift the flight
+    # path evolves incrementally from the PREVIOUS frame's velocity, so a
+    # zero-velocity spawn would leave v_dir undefined on frame 1.
+    f, _, _ = pack_axes()
+    pack_vel[:] = f * pack_speed[:, None]
 
 # --- 3c. NEURAL PACK (neuroevolution) ---
 # MLP 14 -> 16 -> 8 -> 4, tanh everywhere; genome = flattened weights+biases.
@@ -380,10 +384,39 @@ def update_predators(layers, pos_np, vel_np):
     # PRED_BOOST); nose up (f_y>0) trades speed for height toward
     # MIN_FLIGHT_SPEED. Clamped to the never-stall / terminal-velocity band.
     pack_speed += (-HAWK_GRAVITY * f[:, 1]) * adt
+    # --- AERODYNAMIC DRIFT: the flight path direction (v_dir, from last
+    # frame's velocity) is NO LONGER snapped to the nose. The nose leads,
+    # lift drags the trajectory after it — high-speed dives carve sweeping
+    # arcs with real momentum (angle-of-attack slip). ---
+    v_mag = np.linalg.norm(pack_vel, axis=1, keepdims=True)
+    v_dir = np.where(v_mag > 1e-4, pack_vel / np.maximum(v_mag, 1e-6), f)
+    # --- INDUCED TURN DRAG: pulling Gs against the flight path (nose f
+    # diverging from v_dir) bleeds airspeed — the cost of a high-AoA turn.
+    # aoa_slip: 0 flying straight along the nose, 1 at a 90deg snap turn,
+    # up to 2 on a full reversal. Bleed is proportional to speed itself, so
+    # a fast diving hawk pays far more than a slow one. Applied BEFORE the
+    # speed clip so a violent reversal can be dragged down to the floor. ---
+    cos_aoa = np.clip(np.einsum('ij,ij->i', f, v_dir), -1.0, 1.0)
+    aoa_slip = np.maximum(0.0, 1.0 - cos_aoa)
+    pack_speed -= INDUCED_DRAG * aoa_slip * pack_speed * adt
     pack_speed = np.clip(pack_speed, MIN_FLIGHT_SPEED, DIVE_MAX_SPEED)
-    # --- velocity always along the nose ---
-    f, r, u = pack_axes()
-    pack_vel[:] = f * pack_speed[:, None]
+    # --- SPEED-MODULATED LIFT BITE: how fast v_dir chases the nose. At
+    # high speed momentum stiffens the path (CRUISE/pack_speed < 1 -> wide
+    # swoop at the bottom of a stoop); near stall the airflow is too slow
+    # for the wings to bite hard either (floor 0.4x). ---
+    high_spd_scale = np.minimum(1.0, CRUISE_SPEED / np.maximum(pack_speed, 1e-6))
+    low_spd_scale = np.clip(pack_speed / max(STALL_SPEED, 1e-6), 0.4, 1.0)
+    grip = np.minimum(LIFT_GRIP * high_spd_scale * low_spd_scale * adt, 1.0)[:, None]
+    # Blend the DIRECTION toward the nose, then re-normalize to a unit
+    # vector separately from pack_speed: averaging two non-parallel unit
+    # vectors shortens the result, which would silently shrink the speed
+    # magnitude (vector-averaging speed loss). Re-normalizing keeps the
+    # trajectory a pure rotation and leaves all speed changes to the
+    # throttle/gravity/induced-drag terms above.
+    new_dir = v_dir * (1.0 - grip) + f * grip
+    new_dir_norm = np.linalg.norm(new_dir, axis=1, keepdims=True)
+    v_dir = np.where(new_dir_norm > 1e-6, new_dir / np.maximum(new_dir_norm, 1e-6), f)
+    pack_vel[:] = v_dir * pack_speed[:, None]
     # --- invisible walls: soft deflection, then hard clamp (vectorized) ---
     half = TERRAIN_SIZE / 2 - 1.0
     soft = 15.0

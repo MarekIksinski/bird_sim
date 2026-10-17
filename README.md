@@ -24,7 +24,10 @@ NumPy when VRAM is tight).
   observations include airspeed and nose pitch). Aerodynamic gravity trades
   altitude for airspeed: a stoop accelerates past boost toward the dive
   ceiling, a climb bleeds speed, and a nose-up hawk below the stall speed
-  drops its nose back toward the horizon.
+  drops its nose back toward the horizon. The flight path also **drifts**:
+  velocity lags behind the nose (speed-modulated lift bite), so high-speed
+  dives carve sweeping arcs, and sharp high-AoA turns bleed airspeed via
+  induced drag.
   True 6-DOF quaternion flight, arena/ceiling deflection, dense shaped
   fitness (proximity ramp + dogfight alignment bonus + catches, minus
   ground/wall/ceiling scrapes). Between generations, a **3-tiered
@@ -49,7 +52,8 @@ NumPy when VRAM is tight).
 
 All tunables live in `config.toml` (flock, hawk, player, pack, rabbits,
 terrain, game). Gravity/dive knobs: `[hawk]` `gravity`, `dive_max_speed`,
-`min_flight_speed`, `stall_speed` (shared by the player) and `[flock]`
+`min_flight_speed`, `stall_speed`, `lift_grip`, `induced_drag` (all shared
+by the player) and `[flock]`
 `gravity`, `min_bird_speed`, `dive_speed_mult`, `climb_speed_mult`.
 The `[player]` section overrides the spectator hawk's
 speeds/rates (falling back to `[hawk]` values when a line is removed) and
@@ -129,3 +133,8 @@ main.py       entrypoint orchestrator (init order + global input/update)
   nose-drop recovery, the never-hover speed floor, the flock's dynamic
   dive/climb speed caps and MIN_BIRD_SPEED floor over a 180-frame soak.
   Run: `DISPLAY=:0 .venv/bin/python tools/verify_gravity.py`
+- `tools/verify_drift.py` — offscreen harness for aerodynamic drift:
+  spawn velocity along the nose, zero AoA slip + unchanged terminal speed
+  in a straight dive, v_dir lag / swoop arc / induced-drag bleed in a
+  90deg pull-out of a fast stoop, and the same in the vectorized pack form.
+  Run: `DISPLAY=:0 .venv/bin/python tools/verify_drift.py`

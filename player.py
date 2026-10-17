@@ -52,9 +52,12 @@ def reset_player():
     """Spawn/reset the player: above terrain at (0,-80), facing +Z, cruise."""
     global player_speed
     player_pos[:] = [0.0, float(terrain.height_at(0.0, -80.0)) + 25.0, -80.0]
-    player_vel[:] = 0.0
     player_speed = float(config.PLAYER_CRUISE_SPEED)
     player_q[:] = [0.0, 0.0, 0.0, 1.0]
+    # velocity rides the nose at spawn: aerodynamic drift evolves the flight
+    # path from the PREVIOUS frame's velocity, so v_dir must be defined at t0.
+    f, _, _ = player_axes()
+    player_vel[:] = f * player_speed
 
 
 def init_player_visuals():
@@ -163,11 +166,30 @@ def update_player():
     # --- gravity energy exchange (same as the pack): stoop builds speed up
     # to DIVE_MAX_SPEED, climbing bleeds it down toward MIN_FLIGHT_SPEED. ---
     player_speed += (-config.HAWK_GRAVITY * float(f[1])) * adt
+    # --- AERODYNAMIC DRIFT (mirror of update_predators): the flight path
+    # direction v_dir lags behind the nose, so high-speed dives carve
+    # sweeping arcs with momentum instead of snapping to the new heading. ---
+    v_mag = float(np.linalg.norm(player_vel))
+    v_dir = player_vel / max(v_mag, 1e-6) if v_mag > 1e-4 else f.copy()
+    # INDUCED TURN DRAG: nose f diverging from the flight path v_dir =
+    # pulling Gs, which bleeds airspeed proportional to speed itself
+    # (aoa_slip: 0 straight, 1 at a 90deg snap turn, 2 at a reversal).
+    cos_aoa = float(np.clip(np.dot(f, v_dir), -1.0, 1.0))
+    aoa_slip = max(0.0, 1.0 - cos_aoa)
+    player_speed -= config.INDUCED_DRAG * aoa_slip * player_speed * adt
     player_speed = float(np.clip(player_speed, config.MIN_FLIGHT_SPEED, config.DIVE_MAX_SPEED))
-
-    # --- velocity always along the nose ---
-    f, r, u = player_axes()
-    player_vel[:] = f * player_speed
+    # SPEED-MODULATED LIFT BITE: stiff path at high speed (wide swoops at
+    # the bottom of a stoop), weak bite near stall (floor 0.4x).
+    high_spd_scale = min(1.0, config.CRUISE_SPEED / max(player_speed, 1e-6))
+    low_spd_scale = float(np.clip(player_speed / max(config.STALL_SPEED, 1e-6), 0.4, 1.0))
+    grip = min(config.LIFT_GRIP * high_spd_scale * low_spd_scale * adt, 1.0)
+    # Blend the DIRECTION toward the nose and re-normalize separately from
+    # the speed (averaging two non-parallel unit vectors shortens the
+    # result — re-normalizing avoids that vector-averaging speed loss).
+    new_dir = v_dir * (1.0 - grip) + f * grip
+    new_dir_norm = float(np.linalg.norm(new_dir))
+    v_dir = new_dir / max(new_dir_norm, 1e-6) if new_dir_norm > 1e-6 else f.copy()
+    player_vel[:] = v_dir * player_speed
 
     # --- invisible walls: soft velocity deflection, then hard clamp
     # (same blend as update_predators, single-hawk form) ---

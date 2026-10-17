@@ -95,6 +95,14 @@ GENERATION_SECONDS = float(_get('pack', 'generation_seconds', 30.0))
 MUTATION_TINY = float(_get('pack', 'mutation_tiny', 0.02))
 MUTATION_MEDIUM = float(_get('pack', 'mutation_medium', 0.08))
 MUTATION_HEAVY = float(_get('pack', 'mutation_heavy', 0.20))
+# King of the Hill: the Tier-1 lineage breeds an ALL-TIME best genome
+# ("Hall of Fame") instead of just this generation's winner. The King
+# always flies in Slot 0, and its standing is re-evaluated live every
+# generation with an EMA: keep HOF_DECAY_KEEP of the historical rating
+# + (1-keep) of the fresh Slot-0 fitness. A fluke genome that only won
+# once decays toward its true (mediocre) live performance and gets
+# dethroned; a genuinely strong King keeps its crown.
+HOF_DECAY_KEEP = float(_get('pack', 'hof_decay_keep', 0.7))
 if POPULATION_SIZE != 10:
     print(f"[pack] WARNING: tiered speciation hardcodes a 10-slot layout; "
           f"population_size = {POPULATION_SIZE} will break evolve_generation. "

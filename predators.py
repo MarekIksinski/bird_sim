@@ -17,7 +17,8 @@ from panda3d.core import Quat as PQuat
 
 from backend import to_cpu
 from config import (POPULATION_SIZE, NUM_BIRDS, MUTATION_TINY,
-                    MUTATION_MEDIUM, MUTATION_HEAVY, FITNESS_CATCH,
+                    MUTATION_MEDIUM, MUTATION_HEAVY, HOF_DECAY_KEEP,
+                    FITNESS_CATCH,
                     PROXIMITY_RADIUS, PROXIMITY_GAIN, GROUND_PENALTY,
                     GROUND_CLEARANCE, DOGFIGHT_RADIUS, DOGFIGHT_GAIN,
                     BOUNDARY_PENALTY, BOUNDARY_SCRAPE, PERSIST, EVOLVE_DIR,
@@ -82,6 +83,13 @@ gen_elapsed = 0.0
 best_idx = 0
 sel_idx = 0   # TAB-cycled hawk for chase / first-person cameras
 
+# --- King of the Hill (Hall of Fame): the all-time best genome ---
+# The reigning King always flies in Slot 0 and is the Tier-1 breeding
+# parent; its rating is re-evaluated live via an EMA (see evolve_generation)
+# so a lucky one-generation fluke cannot lock Slot 0 forever.
+hof_genome = None      # 1D float64 copy, shape (GENOME_LEN,) once crowned
+hof_fitness = -1e9     # float; EMA-blended all-time standing of the King
+
 # --- persistence: keep the evolved pack between runs (folder from config) ---
 _CKPT = os.path.join(EVOLVE_DIR, 'population.npz')
 _HISTORY = os.path.join(EVOLVE_DIR, 'history.csv')
@@ -91,6 +99,7 @@ def load_checkpoint():
     """Restore population/generation counters from the checkpoint if it
     matches the current config (population_size, genome length)."""
     global population, generation, total_catches
+    global hof_genome, hof_fitness
     if not PERSIST or not os.path.exists(_CKPT):
         return
     try:
@@ -103,6 +112,17 @@ def load_checkpoint():
         population = pop.astype(np.float64)
         generation = int(d['generation'])
         total_catches = int(d['total_catches'])
+        # King of the Hill state (backward compatible: old checkpoints
+        # lack these keys -> the loaded Slot 0 genome becomes the
+        # incumbent King so Tier 1 keeps the evolved champion).
+        if 'hof_genome' in d.files and 'hof_fitness' in d.files \
+                and d['hof_genome'].shape == (GENOME_LEN,):
+            hof_genome = d['hof_genome'].astype(np.float64)
+            hof_fitness = float(d['hof_fitness'])
+        else:
+            hof_genome = population[0].copy()
+            hof_fitness = 0.0
+            print("[persist] no HoF in checkpoint: Slot 0 becomes incumbent King")
         print(f"[persist] resumed at gen {generation} from {_CKPT}")
     except Exception as e:
         print(f"[persist] could not load checkpoint ({e}); starting fresh")
@@ -133,7 +153,9 @@ def save_checkpoint():
     try:
         os.makedirs(EVOLVE_DIR, exist_ok=True)
         np.savez(_CKPT, population=population, generation=generation,
-                 total_catches=total_catches)
+                 total_catches=total_catches,
+                 hof_genome=hof_genome if hof_genome is not None else population[0],
+                 hof_fitness=hof_fitness)
         import flock   # lazy: the starling checkpoint lives in flock's state
         np.savez(_STARLING_CKPT, tribe_pop=flock.tribe_pop,
                  starling_evolutions=flock.starling_evolutions)
@@ -343,33 +365,64 @@ def update_predators(layers, pos_np, vel_np):
         respawn_pack()
 
 def evolve_generation():
-    """Rank -> 3-tiered speciation: each top-3 lineage keeps an untouched
-    clone plus offspring at a lineage-specific mutation strength.
-    Tier 1 (champion, tiny): fine-tune the winner. Tier 2 (runner-up,
+    """Rank -> 3-tiered speciation: Tier 1 breeds the ALL-TIME King of the
+    Hill (Hall of Fame genome, re-evaluated live via EMA), Tiers 2/3 breed
+    this generation's top non-King challengers. Each lineage keeps an
+    untouched clone plus offspring at a lineage-specific mutation strength.
+    Tier 1 (King, tiny): fine-tune the all-time best. Tier 2 (runner-up,
     medium): explore around second place. Tier 3 (wildcard, heavy):
     high-variance lottery tickets. Hardcoded 10-slot layout."""
     global population, fitness, gen_kills, generation, gen_elapsed, sel_idx
+    global hof_genome, hof_fitness
     order = np.argsort(-fitness)
-    print(f"[evolution] gen {generation}: best fitness {fitness[order[0]]:.0f}, "
-          f"kills best {gen_kills[order[0]]}, total {gen_kills.sum()}")
     # history row FIRST: fitness/gen_kills still hold THIS generation's
     # results (and `generation` is still the completed gen's number).
     append_history()
+
+    # --- King of the Hill: live re-evaluation & crowning ---
+    # The reigning King always flew in Slot 0 this generation, so blend
+    # 70% of its historical standing with 30% of its LIVE Slot-0 fitness
+    # (HOF_DECAY_KEEP from config). Why an EMA instead of "best ever":
+    # fitness is stochastic (prey positions, spawn luck), so a mediocre
+    # genome can score one lucky spike and, under a max-ever rule, lock
+    # Slot 0 forever while never reproducing that score. The live blend
+    # pulls a fluke King's rating down toward its true performance over
+    # a few generations until a real challenger crosses it.
+    if hof_genome is not None:
+        hof_fitness = HOF_DECAY_KEEP * hof_fitness + (1.0 - HOF_DECAY_KEEP) * float(fitness[0])
+    crowned = hof_genome is None or fitness[order[0]] >= hof_fitness
+    if crowned:
+        hof_genome = population[order[0]].copy()
+        hof_fitness = float(fitness[order[0]])
+    print(f"[evolution] gen {generation}: best fitness {fitness[order[0]]:.0f}, "
+          f"kills best {gen_kills[order[0]]}, total {gen_kills.sum()} | "
+          f"HoF {'CROWNED' if crowned else 'holds'} at {hof_fitness:.0f}")
+
     new_pop = np.empty_like(population)
-    # --- Tier 1: champion lineage (exploitation) ---
-    new_pop[0] = population[order[0]]                       # untouched champion
+    # --- Tier 1: King lineage (exploitation) — the all-time best genome
+    # always flies untouched in Slot 0; slots 1-3 are tiny-mutation clones.
+    new_pop[0] = hof_genome.copy()
     for i in (1, 2, 3):
-        new_pop[i] = population[order[0]] + pack_rng.normal(
+        new_pop[i] = hof_genome + pack_rng.normal(
             0.0, MUTATION_TINY, size=GENOME_LEN)
+    # --- Tier 2/3 parents: top challengers, never the King's own genome.
+    # If order[0] was just crowned (or IS the King in slot 0), its genome
+    # is already in new_pop[0] — skip that slot so the same genome isn't
+    # cloned into both Tier 1 and Tier 2. If the old King kept the crown
+    # while a different hawk won the generation, that challenger still
+    # gets to breed: promote order[0]/order[1] past slot 0.
+    king_slot = 0 if not crowned else int(order[0])
+    challengers = [int(i) for i in order if int(i) != king_slot][:2]
+    tier2_parent, tier3_parent = challengers[0], challengers[1]
     # --- Tier 2: runner-up lineage (medium exploration) ---
-    new_pop[4] = population[order[1]]                       # untouched runner-up
+    new_pop[4] = population[tier2_parent]                   # untouched runner-up
     for i in (5, 6):
-        new_pop[i] = population[order[1]] + pack_rng.normal(
+        new_pop[i] = population[tier2_parent] + pack_rng.normal(
             0.0, MUTATION_MEDIUM, size=GENOME_LEN)
     # --- Tier 3: wildcard lineage (heavy exploration) ---
-    new_pop[7] = population[order[2]]                       # untouched wildcard
+    new_pop[7] = population[tier3_parent]                   # untouched wildcard
     for i in (8, 9):
-        new_pop[i] = population[order[2]] + pack_rng.normal(
+        new_pop[i] = population[tier3_parent] + pack_rng.normal(
             0.0, MUTATION_HEAVY, size=GENOME_LEN)
     population = new_pop
     fitness[:] = 0.0

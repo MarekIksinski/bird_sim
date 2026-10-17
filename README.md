@@ -25,6 +25,11 @@ NumPy when VRAM is tight).
 - **Rabbit prey layer** — 100 rabbits on a pure-NumPy 4-state machine
   (Forage / Vigilance / Freeze / Flee) that react to the nearest hawk and
   sprint to invisible burrows, diving underground when cornered.
+- **Spectator hawk (player)** — a keyboard-piloted hawk flying the same
+  6-DOF quaternion physics, wall/ceiling deflection and ground clearance as
+  the AI pack, but a pure ghost: starlings and rabbits never see it, it
+  cannot catch birds, and generation resets never touch it. Its flight feel
+  (speeds, rates, key bindings) is configured separately in `[player]`.
 
 ## Running
 
@@ -33,17 +38,32 @@ NumPy when VRAM is tight).
 ./run.sh --cpu    # skip the CuPy probe (or set game.force_cpu in config.toml)
 ```
 
-All tunables live in `config.toml` (flock, hawk, pack, rabbits, terrain,
-game). Evolution checkpoints persist in the folder set by
-`[pack] save_folder`.
+All tunables live in `config.toml` (flock, hawk, player, pack, rabbits,
+terrain, game). The `[player]` section overrides the spectator hawk's
+speeds/rates (falling back to `[hawk]` values when a line is removed) and
+its key bindings (`<action>_keys` = a key name or a list of them).
+Evolution checkpoints persist in the folder set by `[pack] save_folder`.
 
 ## Controls
 
+Camera modes: `1` fixed wide, `2` pack-chase (best hawk), `3` AI
+first-person, `4` player chase, `5` player first-person.
+
 | Key | Action |
 |-----|--------|
-| 1 / 2 / 3 | fixed wide / pack-chase / first-person camera |
-| TAB | cycle the tracked hawk |
+| 1 / 2 / 3 / 4 / 5 | switch camera mode (see above) |
+| TAB | cycle the tracked AI hawk |
+| R | respawn the player hawk (remappable: `[player] reset_keys`) |
 | ESC | quit |
+
+Player flight (default bindings, all remappable in `[player]`):
+
+| Key | Action |
+|-----|--------|
+| W / S | pitch nose down / up |
+| A / D | roll left / right (banks into a coordinated turn) |
+| Q / E | yaw left / right |
+| Shift / Ctrl | throttle boost / slow (release = cruise) |
 
 ## Files / architecture
 
@@ -57,6 +77,8 @@ terrain.py    heightmaps + height_at at import; entities via init_environment()
 predators.py  hawk pack state, neuroevolution, flight physics, checkpoints
 flock.py      starling state, tribe NNs, update_boids_gpu, FlockVisuals
 rabbits.py    ground-prey FSM, update_rabbits, RabbitVisuals
+player.py     spectator hawk state + keyboard flight (ghost; never feeds
+              predators/flock/rabbits)
 hud_cam.py    camera modes, HUD text, keyboard handling
 main.py       entrypoint orchestrator (init order + global input/update)
 ```
@@ -64,8 +86,9 @@ main.py       entrypoint orchestrator (init order + global input/update)
 - `main.py` imports `backend` before Ursina sees the command line (`--cpu`
   is stripped there), then does: `Ursina(vsync=False)` -> `load_checkpoint()`
   + `_upload_tribe_layers()` -> environment + `FlockVisuals` +
-  `RabbitVisuals` + hawk entities + HUD -> `respawn_pack()` -> fog re-apply
-  -> `app.run()`. No Ursina entity is ever created at module import time.
+  `RabbitVisuals` + hawk entities + player hawk + HUD -> `respawn_pack()`
+  -> fog re-apply -> `app.run()`. No Ursina entity is ever created at module
+  import time.
 - `predators` <-> `flock` reference each other only through lazy imports
   inside functions (the starling checkpoint hooks in
   `predators.load/save_checkpoint` read/write `flock.tribe_pop`).
@@ -79,3 +102,10 @@ main.py       entrypoint orchestrator (init order + global input/update)
   modules, steps Ursina frames, and checks evolution, checkpoints (incl.
   the starling round-trip), cameras and rabbits end to end.
   Run: `DISPLAY=:0 .venv/bin/python tools/verify_refactor.py`
+- `tools/verify_player.py` — offscreen harness for the spectator hawk:
+  spawn, straight flight, pitch/roll signs, throttle, wall/ceiling/ground
+  clamps, dt-spike guard, camera modes 1-5, respawn, and render-truth
+  quaternion sync. Run: `DISPLAY=:0 .venv/bin/python tools/verify_player.py`
+- `tools/verify_player_cfg.py` — checks the `[player]` config section:
+  speed/rate overrides, `[hawk]` fallbacks, and string/list key bindings.
+  Run: `.venv/bin/python tools/verify_player_cfg.py`

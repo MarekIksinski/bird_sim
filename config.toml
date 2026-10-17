@@ -22,19 +22,36 @@ vertical_speed = 0.02      # rad/s; slow Y swoop (0 = flat altitude)
 vertical_amplitude = 10.0  # meters above/below base altitude
 
 [hawk]
-cruise_speed = 2.5        # speed after launch, no keys
-boost_speed = 3.5         # Shift held
-slow_factor = 0.45        # Ctrl = cruise * this
-yaw_rate = 80.0           # deg/s, A/D
-pitch_rate = 60.0         # deg/s, W/S
-roll_speed = 60.0        # deg/s, Q/E
-auto_level = true         # wings return to horizontal when Q/E released
-invert_yaw = false        # set true to reverse A/D steering
-invert_pitch = false      # set true to reverse W/S steering
-invert_roll = false       # set true to reverse Q/E steering
+cruise_speed = 2.5        # AI pack speed, throttle out = 0
+boost_speed = 3.5         # AI pack speed, throttle out = +1
+slow_factor = 0.45        # throttle out = -1 -> cruise * this
+yaw_rate = 80.0           # deg/s, NN output
+pitch_rate = 60.0         # deg/s, NN output
+roll_speed = 60.0         # deg/s, NN output
 max_altitude = 150.0      # sky barrier height (m); needs room for full loops
 base_fov = 100.0           # camera FOV at cruise speed
 boost_fov = 120.0         # camera FOV at full boost (Shift)
+
+[player]
+# Spectator hawk (modes 4/5). Speeds/rates fall back to the [hawk] values
+# above when a line here is removed. Keys are Ursina key names: a string
+# or a list, e.g. pitch_down_keys = ["w", "up arrow"].
+cruise_speed = 2.5        # no throttle keys
+boost_speed = 3.5         # boost key held
+slow_factor = 0.45        # slow key -> cruise * this
+yaw_rate = 80.0           # deg/s, yaw keys
+pitch_rate = 60.0         # deg/s, pitch keys
+roll_speed = 60.0         # deg/s, roll keys
+auto_coord = 0.35         # extra yaw per unit of bank (0 = raw yaw only)
+pitch_down_keys = ["w", "up arrow"]
+pitch_up_keys = ["s", "down arrow"]
+roll_left_keys = ["a", "left arrow"]
+roll_right_keys = ["d", "right arrow"]
+yaw_left_keys = "q"
+yaw_right_keys = "e"
+boost_keys = "left shift"
+slow_keys = "left control"
+reset_keys = "r"
 
 [pack]
 population_size = 10        # hawks flying simultaneously each generation
@@ -75,7 +92,7 @@ roost_clear_radius = 30.0 # flat bowl around the flock
 fog_density = 0.014      # visibility falloff
 
 [game]
-start_camera = 2          # 1 fixed wide, 2 pack-chase (best hawk), 3 first-person (TAB cycles hawks)
+start_camera = 2          # 1 fixed wide, 2 pack-chase (best hawk), 3 AI first-person (TAB cycles), 4 player chase, 5 player first-person
 force_cpu = false         # true = skip GPU even if VRAM looks free
 
 [rabbits]

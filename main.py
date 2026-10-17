@@ -30,6 +30,7 @@ import terrain
 import predators
 import flock
 import rabbits
+import player
 import hud_cam
 
 app = Ursina(vsync=False)
@@ -45,6 +46,7 @@ terrain.init_environment()
 flock_viz = flock.FlockVisuals()
 rabbit_viz = rabbits.RabbitVisuals()
 predators.init_pack_visuals()
+player.init_player_visuals()
 hud_cam.init_hud_and_camera()
 
 # initial drop: hawks launch from the edge facing the roost
@@ -61,6 +63,7 @@ def input(key):
     hud_cam.handle_input(key)
 
 def update():
+    player.update_player()
     hud_cam.update_camera_and_hud()
 
 app.run()

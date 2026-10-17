@@ -87,6 +87,38 @@ PANIC_MAX_SPEED = _get('hawk_vs_flock', 'panic_max_speed', 3.4)
 CATCH_RADIUS = _get('hawk_vs_flock', 'catch_radius', 1.2)
 MAX_ALTITUDE = _get('hawk', 'max_altitude', 80.0)  # ceiling: keep map edges hidden
 
+# --- 1d. PLAYER (spectator hawk) ---
+# Separate flight feel + key bindings from the AI pack. Speed/rate values
+# fall back to the [hawk] section, so the player mirrors the pack unless
+# overridden in [player]. Keys are Ursina key names: a bare string or a
+# list (e.g. ["w", "up arrow"]) — every mapping accepts multiple keys.
+def _pget(key, default):
+    return _cfg.get('player', {}).get(key, _get('hawk', key, default))
+PLAYER_CRUISE_SPEED = float(_pget('cruise_speed', 2.4))
+PLAYER_BOOST_SPEED = float(_pget('boost_speed', 4.6))
+PLAYER_SLOW_FACTOR = float(_pget('slow_factor', 0.45))
+PLAYER_YAW_RATE = float(_pget('yaw_rate', 90.0))
+PLAYER_PITCH_RATE = float(_pget('pitch_rate', 60.0))
+PLAYER_ROLL_RATE = float(_pget('roll_speed', 120.0))
+# extra yaw per unit of bank: coordinated turns on keyboard (0 = raw yaw only)
+PLAYER_AUTO_COORD = float(_get('player', 'auto_coord', 0.35))
+
+def _pkeys(key, default):
+    v = _get('player', key, default)
+    return (v,) if isinstance(v, str) else tuple(v)
+
+PLAYER_KEYS = {
+    'pitch_down': _pkeys('pitch_down_keys', ('w', 'up arrow')),
+    'pitch_up':   _pkeys('pitch_up_keys',   ('s', 'down arrow')),
+    'roll_left':  _pkeys('roll_left_keys',  ('a', 'left arrow')),
+    'roll_right': _pkeys('roll_right_keys', ('d', 'right arrow')),
+    'yaw_left':   _pkeys('yaw_left_keys',   ('q',)),
+    'yaw_right':  _pkeys('yaw_right_keys',  ('e',)),
+    'boost':      _pkeys('boost_keys',      ('left shift',)),
+    'slow':       _pkeys('slow_keys',       ('left control',)),
+    'reset':      _pkeys('reset_keys',      ('r',)),
+}
+
 POPULATION_SIZE = int(_get('pack', 'population_size', 10))
 GENERATION_SECONDS = float(_get('pack', 'generation_seconds', 30.0))
 # 3-tiered speciation: each of the top-3 lineages gets its own mutation
@@ -146,7 +178,7 @@ _FOG_RANGE = (50, int(3.0 / _fd)) if 0 < _fd < 1 else ((50, 450) if _fd >= 1 els
 
 # --- camera/HUD constants ---
 # config start_camera: 1 fixed wide, 2 pack chase (best hawk), 3 first-person (selected)
-START_CAMERA = int(_get('game', 'start_camera', 3))
+START_CAMERA = int(_get('game', 'start_camera', 4))
 # Dynamic FOV warp: widens toward BOOST_FOV as the tracked hawk approaches boost speed.
 BASE_FOV = _get('hawk', 'base_fov', 90.0)
 BOOST_FOV = _get('hawk', 'boost_fov', 110.0)

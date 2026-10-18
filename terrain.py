@@ -52,8 +52,9 @@ def _make_heightmap(seed, res, size, amp):
 heightmap = _make_heightmap(TERRAIN_SEED, TERRAIN_RES, TERRAIN_SIZE, TERRAIN_AMP)
 _cell = TERRAIN_SIZE / TERRAIN_RES
 
-def height_at(x, z):
-    """Bilinear sample of the heightmap (vectorized, used by physics too)."""
+def _play_height_at(x, z):
+    """Raw playfield heightmap bilinear sample (vectorized, used by physics too).
+    Public callers should use height_at(), which layers the backdrop on top."""
     u = (np.asarray(x, dtype=np.float64) + TERRAIN_SIZE / 2) / _cell
     v = (np.asarray(z, dtype=np.float64) + TERRAIN_SIZE / 2) / _cell
     u = np.clip(u, 0, TERRAIN_RES - 1e-6); v = np.clip(v, 0, TERRAIN_RES - 1e-6)
@@ -96,18 +97,42 @@ def build_terrain_mesh():
     m.generate_normals(smooth=False)
     return m
 
-# --- 2b. BACKDROP MOUNTAINS (visual shell, no physics) ---
+# --- 2b. BACKDROP MOUNTAINS (visual shell + physics ground in the corners) ---
+# NOTE: the blend is RADIAL (r = sqrt(x^2+z^2) starts rising at TERRAIN_SIZE/2)
+# while the playable arena is a SQUARE — so in the four arena corners the
+# backdrop mountains rise ABOVE the playfield heightmap inside the walls.
+# height_at() below therefore returns max(playfield, backdrop): the encroaching
+# corner ridges are solid ground for physics, AI clearance sensors, rabbit
+# ground clamping, tree placement, and camera collision, not just visuals.
 backdrop_hm = _make_heightmap(TERRAIN_SEED + 1, BACKDROP_RES, BACKDROP_SIZE, BACKDROP_AMP)
 # Feather the center instead of a hard basin: the backdrop continues the PLAY
 # surface ~3m below it out to the map edge (r=600), then blends up into the
 # mountain ring over the next 100m (just outside the invisible walls at ~599).
-# Overlap only exists outside the walls -> pure visual blend, no gameplay hit.
 _blin = np.linspace(-BACKDROP_SIZE / 2, BACKDROP_SIZE / 2, BACKDROP_RES + 1)
 _bx, _bz = np.meshgrid(_blin, _blin)
 _br = np.sqrt(_bx**2 + _bz**2)
-_play_floor = height_at(_bx, _bz) - 3.0   # height_at clamps coords: extends the edge
+_play_floor = _play_height_at(_bx, _bz) - 3.0   # _play_height_at clamps coords: extends the edge
 _blend = _smooth(np.clip((_br - TERRAIN_SIZE / 2) / 100.0, 0, 1))
 backdrop_hm = _play_floor * (1 - _blend) + backdrop_hm * _blend
+
+_bcell = BACKDROP_SIZE / BACKDROP_RES
+
+def backdrop_height_at(x, z):
+    """Bilinear sample of backdrop_hm (same vectorized pattern as
+    _play_height_at, scalar and array inputs alike)."""
+    u = (np.asarray(x, dtype=np.float64) + BACKDROP_SIZE / 2) / _bcell
+    v = (np.asarray(z, dtype=np.float64) + BACKDROP_SIZE / 2) / _bcell
+    u = np.clip(u, 0, BACKDROP_RES - 1e-6); v = np.clip(v, 0, BACKDROP_RES - 1e-6)
+    i = u.astype(int); j = v.astype(int)
+    tu = u - i; tv = v - j
+    hm = backdrop_hm
+    return (hm[j, i] * (1 - tu) * (1 - tv) + hm[j, i + 1] * tu * (1 - tv) +
+            hm[j + 1, i] * (1 - tu) * tv + hm[j + 1, i + 1] * tu * tv)
+
+def height_at(x, z):
+    """Bilinear sample of the effective ground surface (max of playfield
+    heightmap and encroaching backdrop mountains)."""
+    return np.maximum(_play_height_at(x, z), backdrop_height_at(x, z))
 
 def build_backdrop_mesh():
     verts = np.zeros((BACKDROP_RES + 1, BACKDROP_RES + 1, 3), dtype=np.float32)

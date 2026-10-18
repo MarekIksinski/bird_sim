@@ -181,3 +181,8 @@ main.py       entrypoint orchestrator (init order + global input/update)
   (age-bias regression), the 10s maturity gate + fallback pool, the
   close-call evasion bonus formula, and the starling checkpoint round-trip.
   Run: `.venv/bin/python tools/verify_tribe_evolution.py`
+- `tools/verify_terrain_backdrop.py` — ground-surface gate: `height_at()`
+  = max(playfield, backdrop) with bit-identical mesh hashes (visual shell
+  unchanged), play-wins-at-center / backdrop-wins-in-the-four arena
+  corners, scalar vs array call parity, and the intact play-3 feathering
+  at backdrop lattice vertices. Run: `.venv/bin/python tools/verify_terrain_backdrop.py`

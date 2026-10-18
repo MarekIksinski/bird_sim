@@ -51,9 +51,12 @@ NumPy when VRAM is tight).
   sprint to invisible burrows, diving underground when cornered.
 - **Spectator hawk (player)** — a keyboard-piloted hawk flying the same
   6-DOF quaternion physics, wall/ceiling deflection, gravity stoop/climb
-  energy exchange, stall nose-drop and ground clearance as the AI pack, but
-  a pure ghost: starlings and rabbits never see it, it cannot catch birds,
-  and generation resets never touch it. Its flight feel (speeds, rates, key
+  energy exchange, stall nose-drop and ground clearance as the AI pack. It
+  is a LIVE predator: starlings panic, evade and get caught by it (caught
+  birds respawn at the roost and drive starling tribe evolution), and
+  rabbits freeze/flee from it — but player catches only count in the HUD
+  (`catches: N (you: M)`), never in the AI pack's neuroevolution fitness.
+  Its flight feel (speeds, rates, key
   bindings) is configured separately in `[player]`.
 
 ## Running
@@ -116,8 +119,9 @@ terrain.py    heightmaps + height_at at import; entities via init_environment()
 predators.py  hawk pack state, neuroevolution, flight physics, checkpoints
 flock.py      starling state, tribe NNs, update_boids_gpu, FlockVisuals
 rabbits.py    ground-prey FSM, update_rabbits, RabbitVisuals
-player.py     spectator hawk state + keyboard flight (ghost; never feeds
-              predators/flock/rabbits)
+player.py     spectator hawk state + keyboard flight (live predator:
+              fed to predators/rabbits as an extra threat; catches only
+              bump player.player_catches)
 hud_cam.py    camera modes, HUD text, keyboard handling
 main.py       entrypoint orchestrator (init order + global input/update)
 ```
@@ -148,6 +152,12 @@ main.py       entrypoint orchestrator (init order + global input/update)
 - `tools/verify_player_cfg.py` — checks the `[player]` config section:
   speed/rate overrides, `[hawk]` fallbacks, and string/list key bindings.
   Run: `.venv/bin/python tools/verify_player_cfg.py`
+- `tools/verify_player_predation.py` — the player hawk as a LIVE predator:
+  panic/flee vector from the player alone, catch counting split (player
+  catches never touch gen_kills/fitness/total_catches), tribe casualty
+  bookkeeping for player-caught birds, rabbit freeze/flee reaction to the
+  player, and the pack-rows-only hawk_dmin source guard.
+  Run: `.venv/bin/python tools/verify_player_predation.py`
 - `tools/verify_gravity_cfg.py` — checks the gravity + stamina constants
   parse, the 15/17-input net shapes, and that fresh populations match the
   new genome lengths. Run: `.venv/bin/python tools/verify_gravity_cfg.py`

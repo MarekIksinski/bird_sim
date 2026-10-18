@@ -156,5 +156,6 @@ def update_camera_and_hud():
     if _line != _last_gen_line:
         _last_gen_line = _line
         gen_text.text = _line
-    if kill_counter.text != f'catches: {predators.total_catches}':
-        kill_counter.text = f'catches: {predators.total_catches}'
+    _catch_line = f'catches: {predators.total_catches} (you: {player.player_catches})'
+    if kill_counter.text != _catch_line:
+        kill_counter.text = _catch_line

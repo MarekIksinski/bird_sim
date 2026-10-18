@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-player.py — playable SPECTATOR hawk (keyboard-piloted, ghost).
+player.py — playable SPECTATOR hawk (keyboard-piloted, LIVE predator).
 
 Shares the AI pack's exact physics stack (6-DOF body-axis quaternion
 attitude, soft wall nose-deflection, ceiling pitch-down, velocity soft
-blend, XZ hard clamp, terrain ground floor) but is a pure observer:
-it is NEVER fed to predators.update_pack() or rabbits.update_rabbits(),
-so starlings and rabbits never see it, it cannot catch birds, and the
-30-second generation resets never touch its state.
+blend, XZ hard clamp, terrain ground floor). Since the player-predation
+update it is NO LONGER a pure ghost: predators.update_pack() stacks
+player_pos as an extra predator row (starlings panic/evasion/catch on
+it, caught birds respawn + drive tribe evolution) and rabbits see it in
+their threat distance. The split is strict: player catches feed only
+player.player_catches — the AI pack's fitness/gen_kills/total_catches
+never see the player. The 30-second generation resets never touch the
+player's state.
 
 State lives in module globals — access via `player.player_pos` etc.
 Controls are fully remappable in config.toml [player] (<action>_keys =
@@ -43,6 +47,10 @@ player_entity = None
 # until BOOST_COOLDOWN_RECOVER recharges. ---
 player_stamina = 1.0
 player_exhausted = False
+# birds the PLAYER hawk has caught (starlings + rabbits feed this from
+# predators.update_pack / rabbits' threat pass; the AI pack's catches stay
+# in predators.total_catches — the two fitness/kill counters never mix).
+player_catches = 0
 
 
 def player_axes():

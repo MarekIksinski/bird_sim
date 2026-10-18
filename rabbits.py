@@ -4,8 +4,8 @@ rabbits.py — ground prey layer (layer 7: imports backend/config/terrain/predat
 
 --- 3d. GROUND PREY: RABBITS (pure NumPy 4-state machine) ---
 Forage(0) / Vigilance(1) / Freeze(2) / Flee(3). They react to the hawk
-pack but do not affect hawk fitness yet. Burrows are INVISIBLE: physics
-only, nothing rendered.
+pack AND the player hawk but do not affect hawk fitness yet. Burrows are
+INVISIBLE: physics only, nothing rendered.
 """
 import numpy as np
 from ursina import Entity, Mesh, color, time
@@ -15,6 +15,7 @@ from config import (NUM_BURROWS, NUM_RABBITS, RABBIT_FLEE_RADIUS,
                     RABBIT_FORAGE_SPEED, RABBIT_FLEE_SPEED,
                     RABBIT_ESCAPE_RADIUS, TERRAIN_SIZE)
 import predators
+import player
 import terrain
 
 _rabbit_rng = np.random.default_rng()
@@ -39,8 +40,11 @@ def update_rabbits():
     # same dt-cap policy as the rest of the sim (no giant teleport on a hitch)
     dt = min(max(time.dt, 0.0), 0.05)
 
-    # distance from each rabbit to the nearest hawk in the pack
-    d = np.linalg.norm(rabbit_pos[:, None, :] - predators.pack_pos[None, :, :], axis=2).min(axis=1)
+    # distance from each rabbit to the nearest threat: AI pack hawks AND
+    # the player hawk (freeze/flee/recover thresholds both react to it)
+    d_pack = np.linalg.norm(rabbit_pos[:, None, :] - predators.pack_pos[None, :, :], axis=2).min(axis=1)
+    d_player = np.linalg.norm(rabbit_pos - player.player_pos[None, :], axis=1)
+    d = np.minimum(d_pack, d_player)
 
     # --- threat triggers ---
     rabbit_state[d < RABBIT_FLEE_RADIUS] = 3

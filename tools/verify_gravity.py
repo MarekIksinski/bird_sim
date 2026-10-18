@@ -47,7 +47,11 @@ player.player_pos[:] = [0.0, 140.0, 0.0]
 q_down = math3d._q_from_aa_b(np.array([[1.0, 0.0, 0.0]]), np.array([90.0]))[0]
 player.player_q[:] = q_down
 held_keys['left shift'] = True   # full throttle too
+# stamina gate (boost_duration 1.0s): this probe tests GRAVITY, so keep the
+# tank topped every half-second to hold thr=+1 for the whole soak. The
+# stamina cycle itself is verified in tools/verify_stamina.py.
 for _ in range(300):
+    player.player_stamina = 1.0; player.player_exhausted = False
     frame(player.update_player)
 held_keys['left shift'] = False
 f = player.player_axes()[0]
@@ -127,6 +131,8 @@ layers = pin_layers(predators.NET_SHAPE[0])
 layers[-1][1][:, 3] = 1.0
 layers[-1][0][:, :, 3] = 0.0
 for _ in range(300):
+    # keep tanks full: this probe tests gravity, not the stamina cycle
+    predators.pack_stamina[:] = 1.0; predators.pack_exhausted[:] = False
     frame(lambda: predators.update_predators(layers, pos_np, vel_np))
 print(f"pack dive: speeds={np.round(predators.pack_speed, 2)}")
 assert np.all(predators.pack_speed > config.PRED_BOOST), \
@@ -158,9 +164,22 @@ print(f"flock soak 180 frames: speed min={min(mins):.2f} max={max(maxes):.2f} "
 
 # ---------- F. obs vector sanity ----------
 obs = predators._hawk_observations(pos_np, vel_np)
-assert obs.shape == (predators.POPULATION_SIZE, 14)
+assert obs.shape == (predators.POPULATION_SIZE, 15)
 assert np.all(np.isfinite(obs)) and np.all(np.abs(obs) <= 1.0)
-print(f"hawk obs: shape={obs.shape} spd_in={obs[0,12]:.2f} fy_in={obs[0,13]:.2f}")
+# stamina sensor: topped full tanks (boost_duration burn makes the last
+# soak frame read ~0.97) -> full tank reads +1.0, empty reads -0.8,
+# and the lockout pins the sensor at -1.0
+predators.pack_stamina[:] = 1.0; predators.pack_exhausted[:] = False
+obs = predators._hawk_observations(pos_np, vel_np)
+assert np.allclose(obs[:, 14], 1.0), obs[:, 14]
+predators.pack_stamina[:] = 0.0
+obs = predators._hawk_observations(pos_np, vel_np)
+assert np.allclose(obs[:, 14], -0.8), obs[:, 14]
+predators.pack_exhausted[:] = True
+obs = predators._hawk_observations(pos_np, vel_np)
+assert np.allclose(obs[:, 14], -1.0), obs[:, 14]
+predators.pack_stamina[:] = 1.0; predators.pack_exhausted[:] = False
+print(f"hawk obs: shape={obs.shape} spd_in={obs[0,12]:.2f} fy_in={obs[0,13]:.2f} stam_in={obs[0,14]:.2f}")
 
 print('ALL GRAVITY CHECKS PASSED')
 app.userExit()

@@ -62,6 +62,7 @@ player.player_q[:] = q_down
 held_keys[config.PLAYER_KEYS['boost'][0]] = True
 max_slip = 0.0
 for i in range(360):
+    player.player_stamina = 1.0; player.player_exhausted = False  # drift test, not stamina test
     frame(player.update_player)
     if i < 60:
         continue   # skip the intentional nose-snap alignment transient

@@ -20,8 +20,13 @@ NumPy when VRAM is tight).
   via a Moran process: tribes that take sustained casualties get replaced by
   mutated copies of the current top performers.
 - **Hawk pack (neuroevolution)** — a population of hawks, each flown by an
-  MLP (14 observations -> 4 controls: yaw/pitch/roll rates + throttle;
-  observations include airspeed and nose pitch). Aerodynamic gravity trades
+  MLP (15 observations -> 4 controls: yaw/pitch/roll rates + throttle;
+  observations include airspeed, nose pitch, and boost stamina). Boost
+  runs on a **stamina tank**: throttle > 0 drains it (full boost lasts
+  `boost_duration` seconds), gliding/braking refills it, and hitting empty
+  locks positive throttle out until the tank recovers to
+  `boost_cooldown_recover` — letting off before empty recharges freely
+  with no lockout (anti-feathering). Aerodynamic gravity trades
   altitude for airspeed: a stoop accelerates past boost toward the dive
   ceiling, a climb bleeds speed, and a nose-up hawk below the stall speed
   drops its nose back toward the horizon. The flight path also **drifts**:
@@ -63,6 +68,8 @@ terrain, game). Gravity/dive knobs: `[hawk]` `gravity`, `dive_max_speed`,
 `min_flight_speed`, `stall_speed`, `lift_grip`, `induced_drag` (all shared
 by the player) and `[flock]`
 `gravity`, `min_bird_speed`, `dive_speed_mult`, `climb_speed_mult`.
+Boost-stamina knobs: `[hawk]` `boost_duration`, `boost_recharge`,
+`boost_cooldown_recover` (also shared with the player).
 The `[player]` section overrides the spectator hawk's
 speeds/rates (falling back to `[hawk]` values when a line is removed) and
 its key bindings (`<action>_keys` = a key name or a list of them).
@@ -87,7 +94,7 @@ Player flight (default bindings, all remappable in `[player]`):
 | W / S | pitch nose down / up |
 | A / D | roll left / right (banks into a coordinated turn) |
 | Q / E | yaw left / right |
-| Shift / Ctrl | throttle boost / slow (release = cruise) |
+| Shift / Ctrl | throttle boost / slow (release = cruise; boost runs on the stamina tank — empty = locked out until recharged) |
 
 ## Files / architecture
 
@@ -133,9 +140,17 @@ main.py       entrypoint orchestrator (init order + global input/update)
 - `tools/verify_player_cfg.py` — checks the `[player]` config section:
   speed/rate overrides, `[hawk]` fallbacks, and string/list key bindings.
   Run: `.venv/bin/python tools/verify_player_cfg.py`
-- `tools/verify_gravity_cfg.py` — checks the gravity constants parse, the
-  14/17-input net shapes, and that fresh populations match the new genome
-  lengths. Run: `.venv/bin/python tools/verify_gravity_cfg.py`
+- `tools/verify_gravity_cfg.py` — checks the gravity + stamina constants
+  parse, the 15/17-input net shapes, and that fresh populations match the
+  new genome lengths. Run: `.venv/bin/python tools/verify_gravity_cfg.py`
+- `tools/verify_stamina.py` — offscreen harness for the boost-stamina
+  cycle: pinned full throttle drains the tank in `boost_duration`, the
+  exhaustion lockout clamps throttle to 0 and holds until
+  `boost_cooldown_recover` recharges (full `boost_recharge`), releasing
+  at a partial tank recharges with no lockout (anti-feathering), braking
+  stays available while exhausted, the obs[:,14] stamina sensor
+  (+1 full / -0.8 empty / -1 locked), and the HUD % + [COOL] readout —
+  for pack and player. Run: `DISPLAY=:0 .venv/bin/python tools/verify_stamina.py`
 - `tools/verify_gravity.py` — offscreen harness for the gravity physics:
   player + pack dive acceleration past boost, climb speed bleed, stall
   nose-drop recovery, the never-hover speed floor, the flock's dynamic

@@ -38,6 +38,11 @@ player_speed = float(config.PLAYER_CRUISE_SPEED)
 # the spawn point at z=-80), same convention as pack_q rows.
 player_q = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float64)
 player_entity = None
+# --- boost stamina mirror of the pack (see predators.update_predators):
+# throttle > 0 burns the tank, hitting 0.0 locks out positive throttle
+# until BOOST_COOLDOWN_RECOVER recharges. ---
+player_stamina = 1.0
+player_exhausted = False
 
 
 def player_axes():
@@ -50,10 +55,13 @@ def player_axes():
 
 def reset_player():
     """Spawn/reset the player: above terrain at (0,-80), facing +Z, cruise."""
-    global player_speed
+    global player_speed, player_stamina, player_exhausted
     player_pos[:] = [0.0, float(terrain.height_at(0.0, -80.0)) + 25.0, -80.0]
     player_speed = float(config.PLAYER_CRUISE_SPEED)
     player_q[:] = [0.0, 0.0, 0.0, 1.0]
+    # fresh tank on respawn: clears stamina burn and the exhaustion lockout
+    player_stamina = 1.0
+    player_exhausted = False
     # velocity rides the nose at spawn: aerodynamic drift evolves the flight
     # path from the PREVIOUS frame's velocity, so v_dir must be defined at t0.
     f, _, _ = player_axes()
@@ -71,6 +79,7 @@ def init_player_visuals():
 def update_player():
     """One frame of player flight: keys -> 6-DOF attitude -> walls -> move."""
     global player_speed, player_q, player_pos, player_vel
+    global player_stamina, player_exhausted
     # dt cap: same policy as update_predators — a heavy-frame time.dt spike
     # must never fire a giant rate rotation.
     adt = min(max(time.dt, 0.0), 0.05)
@@ -88,6 +97,25 @@ def update_player():
     yaw_in = (_held('yaw_right') - _held('yaw_left')) + (-config.PLAYER_AUTO_COORD * roll_in)
     # throttle: Shift boost / nothing cruise / Ctrl slow
     thr = _held('boost') - _held('slow')
+    # --- BOOST STAMINA GATE (exact mirror of update_predators): an
+    # exhausted player cannot push positive throttle — gliding and braking
+    # stay available and gravity stoops still accelerate. ---
+    if player_exhausted or player_stamina <= 0.0:
+        thr = min(thr, 0.0)
+    # drain / recharge / exhaustion lockout (same either/or rule as the
+    # pack: burning scales with throttle, anything else refills; hitting
+    # 0.0 locks boost out until BOOST_COOLDOWN_RECOVER)
+    burn_rate = 1.0 / max(config.BOOST_DURATION, 1e-6)
+    recharge_rate = 1.0 / max(config.BOOST_RECHARGE, 1e-6)
+    if thr > 0.0 and not player_exhausted:
+        player_stamina -= thr * (adt * burn_rate)
+    else:
+        player_stamina += adt * recharge_rate
+    player_stamina = float(np.clip(player_stamina, 0.0, 1.0))
+    if player_stamina <= 1e-5:
+        player_exhausted = True
+    if player_stamina >= config.BOOST_COOLDOWN_RECOVER - 1e-5:
+        player_exhausted = False
 
     # --- 6-DOF attitude: body-axis deltas RIGHT-multiply (q_new = q * dq),
     # identical to the pack's convention (see predators.py header). ---

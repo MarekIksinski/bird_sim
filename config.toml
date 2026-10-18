@@ -41,6 +41,11 @@ lift_grip = 5.5           # 1/s: how fast the flight path follows the nose (lowe
 induced_drag = 1.8        # airspeed bleed per second of high-AoA slip (sharp turns cost speed)
 base_fov = 100.0           # camera FOV at cruise speed
 boost_fov = 120.0         # camera FOV at full boost (Shift)
+boost_duration = 1.0      # seconds of full (thr=+1) boost draining stamina 100% -> 0%
+boost_recharge = 3.0      # seconds to refill stamina 0% -> 100% while not boosting
+boost_cooldown_recover = 1.0  # stamina needed to clear the exhaustion lockout (1.0 = a fully
+                              # emptied tank must recharge the whole 3s; letting off before 0
+                              # recharges partially with NO lockout at all)
 
 [player]
 # Spectator hawk (modes 4/5). Speeds/rates fall back to the [hawk] values

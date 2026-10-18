@@ -27,7 +27,8 @@ from config import (POPULATION_SIZE, NUM_BIRDS, MUTATION_TINY,
                     PRED_BOOST, CRUISE_SPEED, SLOW_FACTOR, YAW_RATE,
                     PITCH_RATE, ROLL_SPEED, PANIC_MAX_SPEED,
                     HAWK_GRAVITY, DIVE_MAX_SPEED, MIN_FLIGHT_SPEED,
-                    STALL_SPEED, LIFT_GRIP, INDUCED_DRAG)
+                    STALL_SPEED, LIFT_GRIP, INDUCED_DRAG,
+                    BOOST_DURATION, BOOST_RECHARGE, BOOST_COOLDOWN_RECOVER)
 import terrain
 from math3d import _q_mul_b, _q_from_aa_b, _q_rot_b
 
@@ -44,6 +45,11 @@ pack_vel = np.zeros((POPULATION_SIZE, 3), dtype=np.float32)
 pack_speed = np.zeros(POPULATION_SIZE, dtype=np.float32)
 pack_q = np.zeros((POPULATION_SIZE, 4), dtype=np.float64)
 pack_q[:, 3] = 1.0
+# --- boost stamina (1.0 = full tank, 0.0 = empty) + exhaustion lockout ---
+# throttle > 0 burns the tank; hitting 0.0 locks out positive throttle
+# until BOOST_COOLDOWN_RECOVER is re-reached (see update_predators).
+pack_stamina = np.ones(POPULATION_SIZE, dtype=np.float32)
+pack_exhausted = np.zeros(POPULATION_SIZE, dtype=bool)
 
 def pack_axes():
     """local forward/right/up per hawk: each (N,3)."""
@@ -56,6 +62,9 @@ def respawn_pack():
     """Respawn all hawks around the map edge, spread out, facing the roost."""
     global gen_elapsed, pack_q, pack_pos, pack_vel, pack_speed
     import flock   # lazy: flock imports this module at top level
+    # fresh tanks every generation: a respawn clears stamina burn and lockout
+    pack_stamina[:] = 1.0
+    pack_exhausted[:] = False
     ang = np.linspace(0, 2 * np.pi, POPULATION_SIZE, endpoint=False) + pack_rng.uniform(-0.3, 0.3)
     rad = TERRAIN_SIZE * 0.42
     px = np.cos(ang) * rad; pz = np.sin(ang) * rad
@@ -75,11 +84,11 @@ def respawn_pack():
     pack_vel[:] = f * pack_speed[:, None]
 
 # --- 3c. NEURAL PACK (neuroevolution) ---
-# MLP 14 -> 16 -> 8 -> 4, tanh everywhere; genome = flattened weights+biases.
-# (14 inputs since the gravity update: +airspeed, +nose pitch f_y — the pack
-# can now sense and exploit diving/climb stalls. GENOME_LEN recomputes
-# automatically and the checkpoint shape guard starts a fresh evolution.)
-NET_SHAPE = (14, 16, 8, 4)
+# MLP 15 -> 16 -> 8 -> 4, tanh everywhere; genome = flattened weights+biases.
+# (15 inputs since the boost-stamina update: +airspeed, +nose pitch f_y,
+# +stamina/exhaustion sensor. GENOME_LEN recomputes automatically and the
+# checkpoint shape guard starts a fresh evolution.)
+NET_SHAPE = (15, 16, 8, 4)
 GENOME_LEN = sum(NET_SHAPE[i] * NET_SHAPE[i+1] + NET_SHAPE[i+1] for i in range(len(NET_SHAPE) - 1))
 # observation normalisation for the target-velocity inputs
 OBS_VEL_SCALE = PANIC_MAX_SPEED
@@ -271,15 +280,16 @@ def _nearest_bird_np(pos_np, vel_np):
     return direction, dist, near_vel, near_pos
 
 def _hawk_observations(pos_np, vel_np):
-    """14 normalized inputs per hawk: line-of-sight axis cues, clamped
+    """15 normalized inputs per hawk: line-of-sight axis cues, clamped
     distance, target-velocity axis cues, terrain clearance, arena awareness
     (wall-repulsion projected on f/r, edge proximity, ceiling clearance),
-    plus two proprioceptive gravity sensors: current airspeed and nose
-    pitch f_y (+1 up / -1 down) so the brain can feel and exploit gravity."""
+    two proprioceptive gravity sensors (current airspeed and nose pitch
+    f_y +1 up / -1 down) so the brain can feel and exploit gravity, and a
+    boost-stamina sensor so the brain can feel and manage the tank."""
     f, r, u = pack_axes()
     direction, dist, near_vel, _ = _nearest_bird_np(pos_np, vel_np)
     clearance = pack_pos[:, 1] - terrain.height_at(pack_pos[:, 0], pack_pos[:, 2])
-    obs = np.empty((POPULATION_SIZE, 14), dtype=np.float64)
+    obs = np.empty((POPULATION_SIZE, 15), dtype=np.float64)
     obs[:, 0] = np.einsum('ij,ij->i', f, direction)
     obs[:, 1] = np.einsum('ij,ij->i', r, direction)
     obs[:, 2] = np.einsum('ij,ij->i', u, direction)
@@ -308,11 +318,15 @@ def _hawk_observations(pos_np, vel_np):
     obs[:, 12] = np.clip((pack_speed - MIN_FLIGHT_SPEED)
                          / (DIVE_MAX_SPEED - MIN_FLIGHT_SPEED) * 2.0 - 1.0, -1.0, 1.0)
     obs[:, 13] = np.clip(f[:, 1], -1.0, 1.0)   # +1 nose straight up, -1 straight down
+    # --- boost stamina sensor: a full tank reads +1.0, an empty one -0.8,
+    # and the exhaustion lockout pins the sensor hard at -1.0 so the brain
+    # FEELS the lockout immediately (distinct from a merely-low tank).
+    obs[:, 14] = np.where(pack_exhausted, -1.0, -0.8 + 1.8 * pack_stamina)
     return np.clip(obs, -1.0, 1.0)
 
 def update_predators(layers, pos_np, vel_np):
     """All hawks fly simultaneously: NN -> rates/throttle -> attitude+velocity."""
-    global pack_q, pack_pos, pack_vel, pack_speed
+    global pack_q, pack_pos, pack_vel, pack_speed, pack_stamina, pack_exhausted
     # Attitude dt is CAPPED: a heavy frame (CPU-fallback boids, GC hitch) can
     # hand us time.dt of seconds, and rate*dt rotations then snap 180+ deg in
     # a single frame — the "pointing straight up flips to straight down" bug.
@@ -412,10 +426,39 @@ def update_predators(layers, pos_np, vel_np):
     pack_q = _q_mul_b(_q_from_aa_b(stall_axis, stall_turn), pack_q)
     pack_q /= np.linalg.norm(pack_q, axis=1, keepdims=True)
     # --- throttle: -1 slow .. 0 cruise .. +1 boost, blended aerodynamically ---
-    thr = out[:, 3]
+    # BOOST STAMINA GATE: raw NN throttle is capped by the stamina tank.
+    # An exhausted hawk (or one that just hit 0.0) cannot push positive
+    # throttle at all — braking (thr<0) and gliding (thr==0) stay fully
+    # available, and gravity stoops still accelerate normally (a hawk with
+    # an empty tank can still dive). Burn/recharge/lockout is integrated
+    # below; the anti-feathering lockout means a fully emptied tank must
+    # recharge all the way to BOOST_COOLDOWN_RECOVER before boost returns,
+    # while letting off BEFORE 0.0 never trips the lockout at all.
+    raw_thr = out[:, 3]
+    thr = np.where(pack_exhausted | (pack_stamina <= 0.0),
+                   np.minimum(raw_thr, 0.0), raw_thr)
     target = np.where(thr >= 0,
                       CRUISE_SPEED + thr * (PRED_BOOST - CRUISE_SPEED),
                       CRUISE_SPEED * (1.0 + thr * (1.0 - SLOW_FACTOR)))
+    # --- stamina drain / recharge / exhaustion lockout (rates are per REAL
+    # second, so they use the capped adt like every other time term) ---
+    burn_rate = 1.0 / max(BOOST_DURATION, 1e-6)
+    recharge_rate = 1.0 / max(BOOST_RECHARGE, 1e-6)
+    boosting = (thr > 0.0) & ~pack_exhausted
+    # burn scales with the throttle actually commanded (half-throttle sips,
+    # full-throttle drains the tank in exactly BOOST_DURATION); every hawk
+    # NOT burning (gliding, braking, or locked out) refills instead — a
+    # strict either/or so braking never double-refills via a negative burn.
+    # (delta form keeps the += in-place so pack_stamina stays float32)
+    delta = np.where(boosting, -thr * (adt * burn_rate), adt * recharge_rate)
+    pack_stamina += delta
+    pack_stamina = np.clip(pack_stamina, 0.0, 1.0)
+    # hitting empty trips the lockout; it only clears once the tank is back
+    # at BOOST_COOLDOWN_RECOVER (default 1.0: a drained hawk waits out the
+    # full BOOST_RECHARGE before it can boost again)
+    pack_exhausted = pack_exhausted | (pack_stamina <= 1e-5)
+    pack_exhausted = np.where(pack_stamina >= BOOST_COOLDOWN_RECOVER - 1e-5,
+                              False, pack_exhausted)
     # Dual-rate blend: ABOVE the throttle target use a gentler DRAG decay
     # (0.8) so dive momentum carries through the swoop; below it the engine-
     # like thrust blend stays snappy (1.5).

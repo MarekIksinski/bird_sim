@@ -142,8 +142,17 @@ def update_camera_and_hud():
         camera.position = Vec3(*(player.player_pos + u * 0.3))
         camera.quaternion = PQuat(q[3], q[0], q[1], q[2])
     # HUD
+    # stamina readout for the currently tracked hawk: player in modes 3/4,
+    # otherwise the chase/FP AI hawk (sel_idx in FP mode 2, best hawk in 0/1).
+    # [COOL] flags the exhaustion lockout (boost blocked until recharged).
+    if curr_mode in (3, 4):
+        _stam, _cool = float(player.player_stamina), player.player_exhausted
+    else:
+        _trk = predators.sel_idx if curr_mode == 2 else predators.best_idx
+        _stam, _cool = float(predators.pack_stamina[_trk]), bool(predators.pack_exhausted[_trk])
     _line = (f'Gen: {predators.generation} | Time: {GENERATION_SECONDS - predators.gen_elapsed:.1f}s | '
-             f'Best Kills: {int(predators.gen_kills[predators.best_idx])} | Flock Evo: {flock.starling_evolutions}')
+             f'Best Kills: {int(predators.gen_kills[predators.best_idx])} | Flock Evo: {flock.starling_evolutions} | '
+             f'Stamina: {int(round(_stam * 100))}%' + (' [COOL]' if _cool else ''))
     if _line != _last_gen_line:
         _last_gen_line = _line
         gen_text.text = _line

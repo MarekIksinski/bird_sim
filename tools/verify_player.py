@@ -70,9 +70,13 @@ held_keys[K['roll_left']] = False
 print(f"PASS roll A: r_y={r[1]:.3f} (right wing up = left bank)")
 
 # --- 5. throttle Shift -> boost toward PRED_BOOST ---
+# (tank topped each frame: this test checks the throttle TARGET, not the
+# stamina cycle — with boost_duration ~1s and a 3s soak the player would
+# otherwise exhaust mid-test. Stamina itself: tools/verify_stamina.py)
 player.reset_player()
 held_keys[K['boost']] = True
 for _ in range(180):
+    player.player_stamina = 1.0; player.player_exhausted = False
     frame(player.update_player)
 held_keys[K['boost']] = False
 assert player.player_speed > config.PLAYER_BOOST_SPEED * 0.95, player.player_speed  # converged to the [player] boost target
@@ -95,6 +99,7 @@ held_keys[K['boost']] = True
 inside = True
 min_fx = 1.0
 for _ in range(600):
+    player.player_stamina = 1.0; player.player_exhausted = False  # wall test, not stamina test
     frame(player.update_player)
     half = config.TERRAIN_SIZE/2 - 1.0
     min_fx = min(min_fx, player.player_axes()[0][0])

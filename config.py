@@ -106,6 +106,17 @@ STALL_SPEED = float(_get('hawk', 'stall_speed', 1.4))     # below this, a climbi
 # sweeping arcs with momentum instead of snapping to the new heading.
 LIFT_GRIP = float(_get('hawk', 'lift_grip', 5.5))     # 1/s rate v_dir aligns toward nose f (lower = more drift/swoop)
 INDUCED_DRAG = float(_get('hawk', 'induced_drag', 1.8))  # airspeed bleed rate in high-AoA turns (f diverges from v_dir)
+# --- BOOST STAMINA / exhaustion cooldown ---
+# Hawks cannot hold boost forever: throttle > 0 burns a stamina tank at
+# 1/BOOST_DURATION per second (throttle-scaled), throttle <= 0 refills at
+# 1/BOOST_RECHARGE per second. Hitting 0.0 locks out positive throttle
+# until the tank recovers to BOOST_COOLDOWN_RECOVER — the anti-feathering
+# rule: with the default 1.0, a fully emptied tank must wait out the whole
+# BOOST_RECHARGE, while letting off the throttle BEFORE 0.0 recharges
+# freely with no lockout. Applies to the AI pack AND the player hawk.
+BOOST_DURATION = float(_get('hawk', 'boost_duration', 1.0))          # s of full boost, 100% -> 0%
+BOOST_RECHARGE = float(_get('hawk', 'boost_recharge', 3.0))          # s to refill 0% -> 100%
+BOOST_COOLDOWN_RECOVER = float(_get('hawk', 'boost_cooldown_recover', 1.0))  # stamina to clear lockout (0..1)
 
 # --- 1d. PLAYER (spectator hawk) ---
 # Separate flight feel + key bindings from the AI pack. Speed/rate values

@@ -50,6 +50,14 @@ NumPy when VRAM is tight).
 ./run.sh --cpu    # skip the CuPy probe (or set game.force_cpu in config.toml)
 ```
 
+Evolution checkpoints persist in the folder set by `[pack] save_folder`.
+Alongside the checkpoints that folder also holds `evolution.log` (every
+session start, enriched per-generation summary — best/mean fitness, HoF
+crownings with Slot-0 live score, peak dive speed, flock evolutions — and
+starling tribe replacements with parent lineage, timestamped and flushed
+live for `tail -f`) and `history.csv` (one rich row per generation for
+charting). Everything respects `[pack] persist = false`.
+
 All tunables live in `config.toml` (flock, hawk, player, pack, rabbits,
 terrain, game). Gravity/dive knobs: `[hawk]` `gravity`, `dive_max_speed`,
 `min_flight_speed`, `stall_speed`, `lift_grip`, `induced_drag` (all shared
@@ -138,3 +146,8 @@ main.py       entrypoint orchestrator (init order + global input/update)
   in a straight dive, v_dir lag / swoop arc / induced-drag bleed in a
   90deg pull-out of a fast stoop, and the same in the vectorized pack form.
   Run: `DISPLAY=:0 .venv/bin/python tools/verify_drift.py`
+- `tools/verify_logging.py` — checks evolution.log telemetry: session
+  separator, enriched [evolution] lines (CROWNED/HELD + slot0 live +
+  max_spd + flock_evos), the rich history.csv schema (incl. old-schema
+  rewrite), tribe-replacement lineage logging, and the PERSIST=False
+  no-filesystem path. Run: `.venv/bin/python tools/verify_logging.py`

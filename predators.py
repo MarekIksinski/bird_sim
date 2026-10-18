@@ -10,6 +10,7 @@ steps REBIND these names, and `from predators import x` would capture a
 stale reference.
 """
 import os
+from datetime import datetime
 
 import numpy as np
 from ursina import Entity, Vec3, color, time
@@ -91,6 +92,9 @@ generation = 1
 gen_elapsed = 0.0
 best_idx = 0
 sel_idx = 0   # TAB-cycled hawk for chase / first-person cameras
+# per-generation peak airspeed across the whole pack (dive telemetry for
+# evolution.log + history.csv; reset at each generation boundary)
+gen_max_speed = 0.0
 
 # --- King of the Hill (Hall of Fame): the all-time best genome ---
 # The reigning King always flies in Slot 0 and is the Tier-1 breeding
@@ -103,10 +107,36 @@ hof_fitness = -1e9     # float; EMA-blended all-time standing of the King
 _CKPT = os.path.join(EVOLVE_DIR, 'population.npz')
 _HISTORY = os.path.join(EVOLVE_DIR, 'history.csv')
 _STARLING_CKPT = os.path.join(EVOLVE_DIR, 'starling_tribes.npz')
+_LOG_FILE = os.path.join(EVOLVE_DIR, 'evolution.log')
+
+def log_event(msg):
+    """Print an event line AND (when PERSIST) append it with a timestamp to
+    evolution/evolution.log, flushed immediately so `tail -f` follows live.
+    A disk hiccup must never crash the sim (same policy as append_history)."""
+    print(msg)
+    if not PERSIST:
+        return
+    try:
+        os.makedirs(EVOLVE_DIR, exist_ok=True)
+        stamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(_LOG_FILE, 'a') as fh:
+            fh.write(f'{stamp} {msg}\n')
+            fh.flush()
+    except Exception as e:
+        print(f"[persist] could not write log ({e})")
 
 def load_checkpoint():
     """Restore population/generation counters from the checkpoint if it
-    matches the current config (population_size, genome length)."""
+    matches the current config (population_size, genome length). Ends by
+    writing a session separator to evolution.log so the text log always
+    opens with when (and at which generation) the run started."""
+    _load_checkpoint_state()
+    import flock   # lazy: flock imports this module at top level
+    log_event(f"[session] === Run started/resumed at gen {generation} | "
+              f"total_catches={total_catches} | "
+              f"starling_evolutions={flock.starling_evolutions} ===")
+
+def _load_checkpoint_state():
     global population, generation, total_catches
     global hof_genome, hof_fitness
     if not PERSIST or not os.path.exists(_CKPT):
@@ -171,19 +201,32 @@ def save_checkpoint():
     except Exception as e:
         print(f"[persist] could not save checkpoint ({e})")
 
-def append_history():
-    """One progression row per completed generation. Must run while fitness
-    and gen_kills still hold this generation's results (i.e. BEFORE they are
-    zeroed for the next one)."""
+_HISTORY_HEADER = ('gen,best_fitness,mean_fitness,best_kills,total_kills,'
+                   'hof_status,hof_fitness,slot0_fitness,slot0_kills,'
+                   'max_speed,starling_evolutions')
+
+def append_history(hof_status, slot0_fit, slot0_kills):
+    """One rich progression row per completed generation. Must run while
+    fitness/gen_kills still hold this generation's results (i.e. BEFORE they
+    are zeroed for the next one). If an existing file carries the OLD header
+    schema, it is rewritten with the new one (old rows would misalign)."""
     if not PERSIST:
         return
     try:
         new = not os.path.exists(_HISTORY)
-        with open(_HISTORY, 'a') as fh:
+        if not new:
+            with open(_HISTORY) as fh:
+                if fh.readline().strip() != _HISTORY_HEADER:
+                    new = True   # schema bump: start the CSV fresh (old rows dropped)
+        import flock   # lazy: starling telemetry lives in flock's state
+        with open(_HISTORY, 'w' if new else 'a') as fh:
             if new:
-                fh.write('gen,best_fitness,mean_fitness,total_kills\n')
+                fh.write(_HISTORY_HEADER + '\n')
             fh.write(f'{generation},{fitness.max():.1f},{fitness.mean():.1f},'
-                     f'{int(gen_kills.sum())}\n')
+                     f'{int(gen_kills.max())},{int(gen_kills.sum())},'
+                     f'{hof_status},{hof_fitness:.1f},{slot0_fit:.1f},'
+                     f'{int(slot0_kills)},{gen_max_speed:.2f},'
+                     f'{flock.starling_evolutions}\n')
     except Exception as e:
         print(f"[persist] could not write history ({e})")
 
@@ -417,6 +460,9 @@ def update_predators(layers, pos_np, vel_np):
     new_dir_norm = np.linalg.norm(new_dir, axis=1, keepdims=True)
     v_dir = np.where(new_dir_norm > 1e-6, new_dir / np.maximum(new_dir_norm, 1e-6), f)
     pack_vel[:] = v_dir * pack_speed[:, None]
+    # dive telemetry: remember the fastest airspeed seen this generation
+    global gen_max_speed
+    gen_max_speed = max(gen_max_speed, float(pack_speed.max()))
     # --- invisible walls: soft deflection, then hard clamp (vectorized) ---
     half = TERRAIN_SIZE / 2 - 1.0
     soft = 15.0
@@ -449,11 +495,11 @@ def evolve_generation():
     medium): explore around second place. Tier 3 (wildcard, heavy):
     high-variance lottery tickets. Hardcoded 10-slot layout."""
     global population, fitness, gen_kills, generation, gen_elapsed, sel_idx
-    global hof_genome, hof_fitness
+    global hof_genome, hof_fitness, gen_max_speed
     order = np.argsort(-fitness)
-    # history row FIRST: fitness/gen_kills still hold THIS generation's
-    # results (and `generation` is still the completed gen's number).
-    append_history()
+    # history row BEFORE fitness/gen_kills are zeroed for the next gen (it
+    # still holds THIS generation's results) — and AFTER the HoF decision
+    # below so the row can carry the CROWNED/HELD status.
 
     # --- King of the Hill: live re-evaluation & crowning ---
     # The reigning King always flew in Slot 0 this generation, so blend
@@ -470,9 +516,19 @@ def evolve_generation():
     if crowned:
         hof_genome = population[order[0]].copy()
         hof_fitness = float(fitness[order[0]])
-    print(f"[evolution] gen {generation}: best fitness {fitness[order[0]]:.0f}, "
-          f"kills best {gen_kills[order[0]]}, total {gen_kills.sum()} | "
-          f"HoF {'CROWNED' if crowned else 'holds'} at {hof_fitness:.0f}")
+    # Slot 0's LIVE performance before the arrays reset — the King's own
+    # scoreboard line (the King always flew Slot 0 this generation).
+    slot0_fit = float(fitness[0])
+    slot0_kills = int(gen_kills[0])
+    import flock   # lazy: flock's counters ride the same summary line
+    log_event(f"[evolution] gen {generation}: best fitness {fitness[order[0]]:.0f} "
+              f"(hawk #{order[0]}), mean {fitness.mean():.0f} | "
+              f"kills best {gen_kills[order[0]]}, total {gen_kills.sum()} | "
+              + (f"HoF CROWNED at {hof_fitness:.0f}" if crowned
+                 else f"HoF holds at {hof_fitness:.0f} "
+                      f"(slot0 live: {slot0_fit:.0f}, {slot0_kills}k)")
+              + f" | max_spd {gen_max_speed:.2f} | flock_evos {flock.starling_evolutions}")
+    append_history('CROWNED' if crowned else 'HELD', slot0_fit, slot0_kills)
 
     new_pop = np.empty_like(population)
     # --- Tier 1: King lineage (exploitation) — the all-time best genome
@@ -506,6 +562,7 @@ def evolve_generation():
     generation += 1
     gen_elapsed = 0.0
     sel_idx = 0
+    gen_max_speed = 0.0   # fresh dive telemetry for the new generation
     # checkpoint AFTER the selection step: the saved (population, generation)
     # pair is exactly what the next generation will fly, so a resume never
     # replays already-evaluated genomes or skips a selection round.

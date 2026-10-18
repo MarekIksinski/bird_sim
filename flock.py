@@ -109,12 +109,15 @@ def _tribe_respawn_check(caught_idx):
     dead_set = set(int(t) for t in dead)
     pool = [int(t) for t in np.argsort(-tribe_means) if int(t) not in dead_set][:3]
     mutated = False
+    parents = []
     for T in dead:
         if pool:
             parent = int(_starling_rng.choice(pool))
+            parents.append((int(T), parent))
             tribe_pop[T] = tribe_pop[parent] + _starling_rng.normal(
                 0.0, STARLING_MUTATION_SIGMA, size=STARLING_GENOME_LEN)
         else:                               # every tribe dead -> fresh random
+            parents.append((int(T), -1))
             tribe_pop[T] = _starling_rng.normal(0.0, 0.5, size=STARLING_GENOME_LEN)
         # the survivors inherit the NEW brain: score the fresh genome from
         # zero, otherwise old-brain survival points keep propping up a tribe
@@ -126,8 +129,15 @@ def _tribe_respawn_check(caught_idx):
         mutated = True
     if mutated:
         _upload_tribe_layers()                # only on actual mutation
-        print(f"[flock_nn] tribe(s) {list(dead)} replaced "
-              f"(total starling evolutions: {starling_evolutions})")
+        # route through the shared logger so the predator-prey arms race
+        # lands chronologically in evolution/evolution.log next to the
+        # hawk generations (parent lineage + current top tribe score)
+        lineage = ', '.join(f"T{t}<-T{p}" if p >= 0 else f"T{t}<-random"
+                            for t, p in parents)
+        predators.log_event(f"[flock_nn] tribe(s) {[int(t) for t in dead]} replaced "
+                            f"({lineage}) | top tribe mean score "
+                            f"{tribe_means.max():.1f} "
+                            f"(total starling evolutions: {starling_evolutions})")
 
 # --- 6. SIMULATION LOOP (boids step, predator interaction folded in) ---
 def update_boids_gpu():

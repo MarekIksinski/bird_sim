@@ -35,6 +35,7 @@ predators.EVOLVE_DIR = tmp
 predators._CKPT = os.path.join(tmp, 'population.npz')
 predators._HISTORY = os.path.join(tmp, 'history.csv')
 predators._STARLING_CKPT = os.path.join(tmp, 'starling_tribes.npz')
+predators._LOG_FILE = os.path.join(tmp, 'evolution.log')
 
 from ursina import time as _utime
 def frame(fn):

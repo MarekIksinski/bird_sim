@@ -16,7 +16,10 @@ NumPy when VRAM is tight).
   bird flying — no hovering mid-air stalls.
 - **Flock neural nets** — one small MLP per tribe (birds split into
   contiguous blocks; 17 observations incl. airspeed + vertical pitch so
-  tribes can sense and exploit gravity). Tribes co-evolve against the hawks
+  tribes can sense and exploit gravity). Hidden widths are configurable:
+  `[flock_nn] hidden_layers = [32, 16]` -> shape (17,32,16,6); any
+  depth/width works, and changing it starts the tribes fresh (shape
+  guard on `starling_tribes.npz`). Tribes co-evolve against the hawks
   via a Moran process: a tribe that loses 5 birds (counter decays with a
   ~23-minute half-life, so sustained hunting pressure executes tribes every
   few generations) is replaced by a mutated copy of a top parent. Parents
@@ -29,7 +32,11 @@ NumPy when VRAM is tight).
   the flock. Every replacement lands in `evolution/evolution.log`.
 - **Hawk pack (neuroevolution)** — a population of hawks, each flown by an
   MLP (15 observations -> 4 controls: yaw/pitch/roll rates + throttle;
-  observations include airspeed, nose pitch, and boost stamina). Boost
+  observations include airspeed, nose pitch, and boost stamina). Hidden
+  widths are configurable: `[hawk] hidden_layers = [32, 16]` -> shape
+  (15,32,16,4); any depth/width works, and changing it changes
+  GENOME_LEN, so `population.npz`'s shape guard starts a fresh
+  evolution. Boost
   runs on a **stamina tank**: throttle > 0 drains it (full boost lasts
   `boost_duration` seconds), gliding/braking refills it, and hitting empty
   locks positive throttle out until the tank recovers to
@@ -81,6 +88,8 @@ by the player) and `[flock]`
 `gravity`, `min_bird_speed`, `dive_speed_mult`, `climb_speed_mult`.
 Boost-stamina knobs: `[hawk]` `boost_duration`, `boost_recharge`,
 `boost_cooldown_recover` (also shared with the player).
+Network width knobs: `[hawk] hidden_layers` and `[flock_nn] hidden_layers`
+(lists of hidden layer widths; changing either starts that evolution fresh).
 The `[player]` section overrides the spectator hawk's
 speeds/rates (falling back to `[hawk]` values when a line is removed) and
 its key bindings (`<action>_keys` = a key name or a list of them).
@@ -159,8 +168,14 @@ main.py       entrypoint orchestrator (init order + global input/update)
   player, and the pack-rows-only hawk_dmin source guard.
   Run: `.venv/bin/python tools/verify_player_predation.py`
 - `tools/verify_gravity_cfg.py` — checks the gravity + stamina constants
-  parse, the 15/17-input net shapes, and that fresh populations match the
+  parse, the config-derived net shapes, and that fresh populations match the
   new genome lengths. Run: `.venv/bin/python tools/verify_gravity_cfg.py`
+- `tools/verify_hidden_layers.py` — configurable MLP hidden widths:
+  default shapes (15,32,16,4)/(17,32,16,6) match config.toml, batched
+  forwards emit (POP,4)/(NUM_BIRDS,6), genome unpack round-trips,
+  arbitrary depth/width via a variant config.toml subprocess
+  ([8,4,8,2] and [64]), and old-shape checkpoints are rejected -> fresh.
+  Run: `.venv/bin/python tools/verify_hidden_layers.py`
 - `tools/verify_stamina.py` — offscreen harness for the boost-stamina
   cycle: pinned full throttle drains the tank in `boost_duration`, the
   exhaustion lockout clamps throttle to 0 and holds until

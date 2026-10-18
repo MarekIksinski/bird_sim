@@ -23,7 +23,7 @@ from config import (NUM_BIRDS, NEIGHBOR_COUNT, SEPARATION_DIST, ROOST_RADIUS,
                     CASUALTY_DECAY, TERRAIN_SIZE, PANIC_RADIUS, FORCE_FLEE,
                     PANIC_MAX_SPEED, GENERATION_SECONDS,
                     FLOCK_GRAVITY, MIN_BIRD_SPEED, DIVE_SPEED_MULT,
-                    CLIMB_SPEED_MULT)
+                    CLIMB_SPEED_MULT, STARLING_HIDDEN_LAYERS)
 import predators
 import terrain
 
@@ -47,7 +47,10 @@ roost_center = cp.array([0, ROOST_BASE_ALTITUDE, 0], dtype=cp.float32)
 # (17 inputs since the gravity update: +bird airspeed, +vertical pitch f_y,
 # so tribes can learn to dive for speed and manage climb stalls. The
 # starling checkpoint shape guard starts fresh tribes on mismatch.)
-STARLING_NET_SHAPE = (17, 16, 8, 6)
+# Hidden-layer widths come from config [flock_nn] hidden_layers
+# (default [32, 16]): arbitrary depth/width, every unpack/upload/forward
+# loop runs over len(STARLING_NET_SHAPE) - 1 layers.
+STARLING_NET_SHAPE = (17,) + STARLING_HIDDEN_LAYERS + (6,)
 STARLING_GENOME_LEN = sum(STARLING_NET_SHAPE[i] * STARLING_NET_SHAPE[i+1] +
                           STARLING_NET_SHAPE[i+1] for i in range(len(STARLING_NET_SHAPE) - 1))
 bird_tribe_np = np.arange(NUM_BIRDS) // BIRDS_PER_TRIBE
@@ -251,7 +254,7 @@ def update_boids_gpu():
     align_norm = avg_vel / MAX_SPEED
     sep_norm = sep_force / (cp.linalg.norm(sep_force, axis=1, keepdims=True) + 1.0)
 
-    obs_gpu = cp.empty((NUM_BIRDS, 17), dtype=cp.float32)
+    obs_gpu = cp.empty((NUM_BIRDS, STARLING_NET_SHAPE[0]), dtype=cp.float32)
     # threat: nearest-hawk direction in the local frame + proximity
     obs_gpu[:, 0] = cp.sum(nearest_dir_gpu * f, axis=1)
     obs_gpu[:, 1] = cp.sum(nearest_dir_gpu * r, axis=1)
@@ -279,10 +282,10 @@ def update_boids_gpu():
     obs_gpu[:, 16] = cp.clip(f[:, 1], -1.0, 1.0)
     cp.clip(obs_gpu, -1.0, 1.0, out=obs_gpu)
 
-    a = obs_gpu.reshape(NUM_TRIBES, BIRDS_PER_TRIBE, 17)
+    a = obs_gpu.reshape(NUM_TRIBES, BIRDS_PER_TRIBE, STARLING_NET_SHAPE[0])
     for W, b in zip(tribe_Ws, tribe_bs):
         a = cp.tanh(cp.einsum('tbi,tio->tbo', a, W) + b[:, None, :])
-    out_gpu = a.reshape(NUM_BIRDS, 6)
+    out_gpu = a.reshape(NUM_BIRDS, STARLING_NET_SHAPE[-1])
 
     # 6. Integration — NN modulates the boids weights per bird (0.25x..1.75x)
     sep_mult = 1.0 + 0.75 * out_gpu[:, 0:1]

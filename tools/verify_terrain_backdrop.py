@@ -25,8 +25,10 @@ from config import TERRAIN_SIZE, TERRAIN_AMP, BACKDROP_AMP
 h_hash = hashlib.sha256(terrain.heightmap.tobytes()).hexdigest()
 b_hash = hashlib.sha256(terrain.backdrop_hm.tobytes()).hexdigest()
 assert h_hash.startswith('e5a3c7f9ec2f6ca5'), f'heightmap changed: {h_hash}'
-assert b_hash.startswith('603141680a18d1c8'), f'backdrop_hm changed: {b_hash}'
-print('PASS meshes bit-identical (heightmap e5a3c7f9..., backdrop 60314168...)')
+# backdrop pin updated 2026-10-18: user retuned BACKDROP_RES 64 -> 32 in
+# config.py (deliberate coarser/cheaper ring). Playfield hash unchanged.
+assert b_hash.startswith('b68adda4b21cacbc'), f'backdrop_hm changed: {b_hash}'
+print('PASS meshes bit-identical (heightmap e5a3c7f9..., backdrop b68adda4...)')
 
 # --- 2. center: play surface wins (backdrop = play - 3 there) -------------
 hc = terrain.height_at(0.0, 0.0)
@@ -85,14 +87,21 @@ assert np.allclose(terrain.backdrop_hm[vi],
                    terrain._play_height_at(terrain._bx[vi], terrain._bz[vi]) - 3.0,
                    atol=1e-5)
 # everywhere inside the walls height_at >= play, and the lift above play is
-# bounded by the backdrop's coarse-grid interpolation error (few meters)
+# bounded by the backdrop's coarse-grid interpolation error. The bound
+# SCALES with the backdrop cell size (bilinear bulge grows ~linearly with
+# cell size; ~5m at RES 64 = 62.5m cells): derive it from config, since
+# BACKDROP_RES is a live knob the user retunes.
+from config import BACKDROP_RES
 r = np.sqrt(xs**2 + zs**2)
 inside = r < TERRAIN_SIZE / 2 - 10
 h_in = terrain.height_at(xs[inside], zs[inside])
 p_in = terrain._play_height_at(xs[inside], zs[inside])
 lift = h_in - p_in
-assert np.all(lift >= -1e-9) and lift.max() < 8.0, (float(lift.min()), float(lift.max()))
+lift_bound = 8.0 * 64.0 / BACKDROP_RES
+assert np.all(lift >= -1e-9) and lift.max() < lift_bound, \
+    (float(lift.min()), float(lift.max()), lift_bound)
 print(f'PASS interior: vertex feathering exact (play-3), max() lift bounded '
-      f'{lift.max():.2f}m = rendered backdrop surface, never below play')
+      f'{lift.max():.2f}m (< {lift_bound:.1f}m for RES={BACKDROP_RES}) '
+      f'= rendered backdrop surface, never below play')
 
 print('ALL TERRAIN-BACKDROP CHECKS PASSED')

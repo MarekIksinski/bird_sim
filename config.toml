@@ -46,6 +46,9 @@ boost_recharge = 5.0      # seconds to refill stamina 0% -> 100% while not boost
 boost_cooldown_recover = 1.0  # stamina needed to clear the exhaustion lockout (1.0 = a fully
                               # emptied tank must recharge the whole 3s; letting off before 0
                               # recharges partially with NO lockout at all)
+hidden_layers = [32, 16]  # hawk MLP hidden layer widths: (15 sensors) -> 32 -> 16 -> (4 controls).
+                          # Any depth/width works; changing it changes GENOME_LEN, so the
+                          # population.npz shape guard starts a FRESH evolution.
 
 [player]
 # Spectator hawk (modes 4/5). Speeds/rates fall back to the [hawk] values
@@ -97,10 +100,13 @@ num_tribes = 20           # one shared MLP per tribe; birds split into contiguou
 mutation_sigma = 0.06     # gaussian noise on offspring tribe weights
 replace_deaths = 5        # tribe loses this many birds -> replaced by mutated top-3 parent
 casualty_decay = 0.0005     # per-second exponential fade of the casualty counter (0 = never decay)
+hidden_layers = [32, 16]  # starling tribe MLP hidden widths: (17 sensors) -> 32 -> 16 -> (6 outputs).
+                          # Any depth/width works; changing it changes STARLING_GENOME_LEN, so the
+                          # starling_tribes.npz shape guard starts the tribes FRESH.
 
 [terrain]
 size = 1200               # field width/depth
-cell = 1.2                # meters per grid cell (lower = more detail)
+cell = 0.6                # meters per grid cell (lower = more detail)
 amplitude = 15.0          # max hill height
 seed = 5                  # change for a different world
 roost_clear_radius = 30.0 # flat bowl around the flock

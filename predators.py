@@ -28,7 +28,8 @@ from config import (POPULATION_SIZE, NUM_BIRDS, MUTATION_TINY,
                     PITCH_RATE, ROLL_SPEED, PANIC_MAX_SPEED,
                     HAWK_GRAVITY, DIVE_MAX_SPEED, MIN_FLIGHT_SPEED,
                     STALL_SPEED, LIFT_GRIP, INDUCED_DRAG,
-                    BOOST_DURATION, BOOST_RECHARGE, BOOST_COOLDOWN_RECOVER)
+                    BOOST_DURATION, BOOST_RECHARGE, BOOST_COOLDOWN_RECOVER,
+                    HAWK_HIDDEN_LAYERS)
 import terrain
 from math3d import _q_mul_b, _q_from_aa_b, _q_rot_b
 
@@ -84,11 +85,15 @@ def respawn_pack():
     pack_vel[:] = f * pack_speed[:, None]
 
 # --- 3c. NEURAL PACK (neuroevolution) ---
-# MLP 15 -> 16 -> 8 -> 4, tanh everywhere; genome = flattened weights+biases.
-# (15 inputs since the boost-stamina update: +airspeed, +nose pitch f_y,
-# +stamina/exhaustion sensor. GENOME_LEN recomputes automatically and the
-# checkpoint shape guard starts a fresh evolution.)
-NET_SHAPE = (15, 16, 8, 4)
+# MLP (15,) + config [hawk] hidden_layers + (4,), tanh everywhere; default
+# hidden [32, 16] -> (15, 32, 16, 4). Arbitrary depth/width straight from
+# config.toml — _unpack_genome/_stack_population/forward all loop over
+# len(NET_SHAPE)-1. (15 inputs since the boost-stamina update: +airspeed,
+# +nose pitch f_y, +stamina/exhaustion sensor.) GENOME_LEN recomputes
+# automatically and the checkpoint shape guard starts a fresh evolution
+# on any width change. (HAWK_HIDDEN_LAYERS via the from-import above: a bare
+# `config.` reference would hit panda3d's DConfig, injected by `direct`.)
+NET_SHAPE = (15,) + HAWK_HIDDEN_LAYERS + (4,)
 GENOME_LEN = sum(NET_SHAPE[i] * NET_SHAPE[i+1] + NET_SHAPE[i+1] for i in range(len(NET_SHAPE) - 1))
 # observation normalisation for the target-velocity inputs
 OBS_VEL_SCALE = PANIC_MAX_SPEED
@@ -289,7 +294,7 @@ def _hawk_observations(pos_np, vel_np):
     f, r, u = pack_axes()
     direction, dist, near_vel, _ = _nearest_bird_np(pos_np, vel_np)
     clearance = pack_pos[:, 1] - terrain.height_at(pack_pos[:, 0], pack_pos[:, 2])
-    obs = np.empty((POPULATION_SIZE, 15), dtype=np.float64)
+    obs = np.empty((POPULATION_SIZE, NET_SHAPE[0]), dtype=np.float64)
     obs[:, 0] = np.einsum('ij,ij->i', f, direction)
     obs[:, 1] = np.einsum('ij,ij->i', r, direction)
     obs[:, 2] = np.einsum('ij,ij->i', u, direction)

@@ -83,6 +83,20 @@ TRIBE_REPLACE_DEATHS = int(_get('flock_nn', 'replace_deaths', 5))
 # pressure reliably triggers evolution every few generations while ancient
 # isolated deaths still slowly fade. 0.0 disables decay.
 CASUALTY_DECAY = float(_get('flock_nn', 'casualty_decay', 0.0005))
+# Hidden-layer widths of the starling tribe MLP: STARLING_NET_SHAPE =
+# (17,) + hidden + (6,) in flock.py. Arbitrary depth/width; the
+# checkpoint shape guard starts fresh tribes on any mismatch.
+def _hidden_layers(section, key, default):
+    v = _get(section, key, default)
+    try:
+        out = tuple(int(x) for x in v)
+        assert len(out) > 0 and all(x > 0 for x in out)
+    except (TypeError, ValueError, AssertionError):
+        print(f"[config] {section}.{key} = {v!r} invalid "
+              f"(need a non-empty list of positive ints); using {default}")
+        out = tuple(default)
+    return out
+STARLING_HIDDEN_LAYERS = _hidden_layers('flock_nn', 'hidden_layers', [32, 16])
 
 # --- 1b. PREDATOR PACK (neuroevolution) ---
 PRED_BOOST = _get('hawk', 'boost_speed', 4.6)           # throttle = +1
@@ -119,6 +133,10 @@ INDUCED_DRAG = float(_get('hawk', 'induced_drag', 1.8))  # airspeed bleed rate i
 BOOST_DURATION = float(_get('hawk', 'boost_duration', 1.0))          # s of full boost, 100% -> 0%
 BOOST_RECHARGE = float(_get('hawk', 'boost_recharge', 3.0))          # s to refill 0% -> 100%
 BOOST_COOLDOWN_RECOVER = float(_get('hawk', 'boost_cooldown_recover', 1.0))  # stamina to clear lockout (0..1)
+# Hidden-layer widths of the hawk MLP: NET_SHAPE = (15,) + hidden + (4,)
+# in predators.py. Arbitrary depth/width; the population.npz shape guard
+# starts a fresh evolution on any mismatch (GENOME_LEN changes).
+HAWK_HIDDEN_LAYERS = _hidden_layers('hawk', 'hidden_layers', [32, 16])
 
 # --- 1d. PLAYER (spectator hawk) ---
 # Separate flight feel + key bindings from the AI pack. Speed/rate values
@@ -198,7 +216,7 @@ ROOST_CLEAR_RADIUS = _get('terrain', 'roost_clear_radius', 30.0)  # flat bowl fo
 # Visual only: never sampled by physics (height_at still uses `heightmap`).
 BACKDROP_SIZE = 4000
 BACKDROP_AMP = 180.0
-BACKDROP_RES = 64   # tiny grid: cheap to render, deliberately coarse
+BACKDROP_RES = 32   # tiny grid: cheap to render, deliberately coarse
 
 # Fog: this Ursina build ignores SCALAR fog_density (the exp branch is
 # commented out in scene.py) — convert the config density to the linear

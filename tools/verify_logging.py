@@ -61,13 +61,14 @@ assert lines[0] == predators._HISTORY_HEADER and len(lines) == 2, lines
 print('PASS old-schema csv rewritten cleanly')
 
 # --- tribe replacement routed through log_event ---
+flock.bird_survival_time[:] = 30.0                                  # all mature
 flock.bird_score[:] = np.arange(flock.NUM_BIRDS, dtype=np.float32)  # tribe 19 best
 flock.tribe_casualties[0] = flock.TRIBE_REPLACE_DEATHS
 caught = np.where(flock.bird_tribe_np == 0)[0][:flock.TRIBE_REPLACE_DEATHS]
 flock._tribe_respawn_check(caught)
 logtxt = open(predators._LOG_FILE).read()
 assert '[flock_nn] tribe(s) [0] replaced' in logtxt
-assert 'T0<-T' in logtxt and 'top tribe mean score' in logtxt
+assert 'T0<-T' in logtxt and 'top_tribe_rate' in logtxt
 print('PASS flock_nn replacement logged with lineage + top score')
 
 # --- PERSIST=False: prints, never touches the filesystem ---

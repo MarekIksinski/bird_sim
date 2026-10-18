@@ -114,6 +114,11 @@ predators.pack_stamina[:] = 0.0   # start the recharge clock from empty
 clear_f = -1
 for i in range(1, int(10 * FPS)):
     frame(lambda: predators.update_predators(layers, pos_np, vel_np))
+    # pin mid-arena: with the live boost_recharge (5s) the straight-level
+    # pinned-NN hawk reaches the +Z wall during this soak and the wall
+    # velocity blend pins pack_speed, faking a "boost did not re-engage"
+    # failure on a correct model (same trap as the player lockout soak).
+    predators.pack_pos[:] = np.array([0.0, 40.0, 0.0], dtype=np.float32)
     if not predators.pack_exhausted.any():
         clear_f = i
         break
@@ -121,9 +126,11 @@ assert clear_f >= 0, "lockout never cleared"
 expect_clear = RECOVER * REC * FPS
 assert abs(clear_f - expect_clear) <= 4, f"recharge took {clear_f}f, expected ~{expect_clear:.0f}f"
 # boost re-engages immediately after the lockout clears
+predators.pack_speed[:] = config.CRUISE_SPEED   # wall blend may have bled it
 spd_before = float(predators.pack_speed[0])
 for _ in range(30):
     frame(lambda: predators.update_predators(layers, pos_np, vel_np))
+    predators.pack_pos[:] = np.array([0.0, 40.0, 0.0], dtype=np.float32)
 assert predators.pack_speed[0] > spd_before + 0.2, "boost did not re-engage after recharge"
 print(f"lockout cleared after {clear_f}f = {clear_f/FPS:.2f}s (BOOST_RECHARGE {REC}s x recover {RECOVER}); boost re-engaged")
 

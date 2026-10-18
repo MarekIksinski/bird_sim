@@ -17,8 +17,16 @@ NumPy when VRAM is tight).
 - **Flock neural nets** — one small MLP per tribe (birds split into
   contiguous blocks; 17 observations incl. airspeed + vertical pitch so
   tribes can sense and exploit gravity). Tribes co-evolve against the hawks
-  via a Moran process: tribes that take sustained casualties get replaced by
-  mutated copies of the current top performers.
+  via a Moran process: a tribe that loses 5 birds (counter decays with a
+  ~23-minute half-life, so sustained hunting pressure executes tribes every
+  few generations) is replaced by a mutated copy of a top parent. Parents
+  are ranked by **score rate** (points per second alive, not raw cumulative
+  score, so a freshly evolved high-performer isn't locked out by an old
+  tribe's age-accrued total) and must be mature (mean survival >= 10s).
+  Bird score rewards **close-call evasion**: surviving inside a hawk's
+  panic radius pays up to +2.5/s on top of survival + cohesion, so jukes
+  that beat a dive earn far more than sitting on the unattacked side of
+  the flock. Every replacement lands in `evolution/evolution.log`.
 - **Hawk pack (neuroevolution)** — a population of hawks, each flown by an
   MLP (15 observations -> 4 controls: yaw/pitch/roll rates + throttle;
   observations include airspeed, nose pitch, and boost stamina). Boost
@@ -166,3 +174,10 @@ main.py       entrypoint orchestrator (init order + global input/update)
   max_spd + flock_evos), the rich history.csv schema (incl. old-schema
   rewrite), tribe-replacement lineage logging, and the PERSIST=False
   no-filesystem path. Run: `.venv/bin/python tools/verify_logging.py`
+- `tools/verify_tribe_evolution.py` — starling co-evolution gate:
+  `[flock_nn]` config values derived from config.toml + decay half-life,
+  net-shape guard, 5-catch tribe execution via `_tribe_respawn_check`
+  (counter bump + `[flock_nn]` log line), rate-based parent ranking
+  (age-bias regression), the 10s maturity gate + fallback pool, the
+  close-call evasion bonus formula, and the starling checkpoint round-trip.
+  Run: `.venv/bin/python tools/verify_tribe_evolution.py`

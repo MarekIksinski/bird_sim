@@ -102,12 +102,26 @@ def _tribe_respawn_check(caught_idx):
     dead = np.where(tribe_casualties >= TRIBE_REPLACE_DEATHS)[0]
     if len(dead) == 0:
         return
-    tribe_means = bird_score.reshape(NUM_TRIBES, BIRDS_PER_TRIBE).mean(axis=1)
+    # Rank parents by score RATE (points per second alive), not raw
+    # cumulative score: a replaced tribe zeroes its score AND survival
+    # clock, so under raw totals an old unreplaced tribe outranks a fresh
+    # high-performing one purely from age, locking new blood out of the
+    # parent pool. The 5.0s grace denominator keeps brand-new respawns
+    # (score ~ dt, survival ~ dt) from spiking the rate to infinity.
+    bird_rate = bird_score / np.maximum(bird_survival_time, 5.0)
+    tribe_means = bird_rate.reshape(NUM_TRIBES, BIRDS_PER_TRIBE).mean(axis=1)
+    tribe_age = bird_survival_time.reshape(NUM_TRIBES, BIRDS_PER_TRIBE).mean(axis=1)
     # Parent pool: top-3 LIVE tribes only. A dead tribe must never parent
     # itself (the old 1/3 self-draw wiped an evolved brain to pure random),
     # and a tribe currently being replaced must not seed another replacement.
+    # Maturity gate: a parent must have a mean survival time >= 10s, so a
+    # tribe replaced seconds ago can't be cloned before its genome was ever
+    # tested against hawks. If fewer than 3 live tribes are that mature
+    # (early run / heavy culling), fall back to all non-dead tribes.
     dead_set = set(int(t) for t in dead)
-    pool = [int(t) for t in np.argsort(-tribe_means) if int(t) not in dead_set][:3]
+    ranked = [int(t) for t in np.argsort(-tribe_means) if int(t) not in dead_set]
+    mature = [t for t in ranked if tribe_age[t] >= 10.0]
+    pool = mature[:3] if len(mature) >= 3 else ranked
     mutated = False
     parents = []
     for T in dead:
@@ -131,12 +145,13 @@ def _tribe_respawn_check(caught_idx):
         _upload_tribe_layers()                # only on actual mutation
         # route through the shared logger so the predator-prey arms race
         # lands chronologically in evolution/evolution.log next to the
-        # hawk generations (parent lineage + current top tribe score)
+        # hawk generations (parent lineage + current top tribe RATE)
+        parents_used = [p for _, p in parents]
         lineage = ', '.join(f"T{t}<-T{p}" if p >= 0 else f"T{t}<-random"
                             for t, p in parents)
         predators.log_event(f"[flock_nn] tribe(s) {[int(t) for t in dead]} replaced "
-                            f"({lineage}) | top tribe mean score "
-                            f"{tribe_means.max():.1f} "
+                            f"by parent(s) {parents_used} ({lineage}) | "
+                            f"top_tribe_rate {tribe_means.max():.2f} "
                             f"(total starling evolutions: {starling_evolutions})")
 
 # --- 6. SIMULATION LOOP (boids step, predator interaction folded in) ---
@@ -355,13 +370,18 @@ def update_boids_gpu():
     pos_gpu += vel_gpu * dt_scale
 
     # 8b. Per-bird survival/cohesion score (CPU): surviving is worth 1/s,
-    # sticking near the local neighbor centroid adds up to +0.5/s, scraping
-    # the ground costs -1/s. Feeds the Moran-process parent choice.
+    # sticking near the local neighbor centroid adds up to +0.5/s, surviving
+    # INSIDE a hawk's PANIC_RADIUS adds up to +2.5/s scaled by proximity —
+    # tribes whose NNs successfully juke and outmanoeuvre a dive earn far
+    # more than tribes parked on the unattacked side of the flock — and
+    # scraping the ground costs -1/s. Feeds the Moran-process parent choice.
     bird_survival_time += np.float32(time.dt)
     cohere_dist_np = to_cpu(cp.linalg.norm(cohere_force, axis=1))
     cohesion_bonus = np.clip(1.0 - cohere_dist_np / 15.0, 0.0, 1.0)
     clearance_np = to_cpu(clearance)
-    bird_score += time.dt * (1.0 + 0.5 * cohesion_bonus - 1.0 * (clearance_np < 2.0))
+    evasion_bonus = np.clip(1.0 - nearest_d_np / PANIC_RADIUS, 0.0, 1.0)
+    bird_score += time.dt * (1.0 + 0.5 * cohesion_bonus + 2.5 * evasion_bonus
+                             - 1.0 * (clearance_np < 2.0))
 
     # 8c. Tribe casualty counters decay exponentially (framerate-independent:
     # multiplier = exp(-CASUALTY_DECAY * dt), exact for any dt). Old deaths

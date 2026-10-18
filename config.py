@@ -74,13 +74,15 @@ if NUM_TRIBES < 1 or NUM_BIRDS % NUM_TRIBES != 0:
     print(f"[flock_nn] num_tribes adjusted to {NUM_TRIBES} so birds split evenly")
 BIRDS_PER_TRIBE = NUM_BIRDS // NUM_TRIBES
 STARLING_MUTATION_SIGMA = float(_get('flock_nn', 'mutation_sigma', 0.06))
-TRIBE_REPLACE_DEATHS = int(_get('flock_nn', 'replace_deaths', 10))
+TRIBE_REPLACE_DEATHS = int(_get('flock_nn', 'replace_deaths', 5))
 # Casualty counter decay (per second, exponential). Steady-state counter =
-# death_rate / CASUALTY_DECAY, so at 0.02/s a tribe only ever crosses the
-# replace_deaths=10 threshold if it is dying at ~0.2 birds/s sustained
-# (12/min — a real massacre), while a concentrated raid crosses it instantly
-# and isolated deaths fade with a ~35s half-life. 0.0 disables decay.
-CASUALTY_DECAY = float(_get('flock_nn', 'casualty_decay', 0.02))
+# death_rate / CASUALTY_DECAY. At 0.02/s the ~35s half-life meant none of
+# the tribes ever reached the threshold at the observed ~4 pack kills per
+# 30s generation — the hawk pressure never executed anything and the tribe
+# pool never moved. 0.0005/s gives a ~23-minute half-life: sustained hunting
+# pressure reliably triggers evolution every few generations while ancient
+# isolated deaths still slowly fade. 0.0 disables decay.
+CASUALTY_DECAY = float(_get('flock_nn', 'casualty_decay', 0.0005))
 
 # --- 1b. PREDATOR PACK (neuroevolution) ---
 PRED_BOOST = _get('hawk', 'boost_speed', 4.6)           # throttle = +1

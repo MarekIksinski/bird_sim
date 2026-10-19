@@ -8,7 +8,7 @@ All Ursina entity creation (Sky, terrain, backdrop, trees) is deferred to
 init_environment(), which main.py calls AFTER app = Ursina(vsync=False).
 """
 import numpy as np
-from ursina import Entity, Mesh, Sky, color, random, scene
+from ursina import Entity, Mesh, Sky, color, scene
 
 from config import (TERRAIN_SIZE, TERRAIN_CELL, TERRAIN_RES, TERRAIN_AMP,
                     TERRAIN_SEED, ROOST_CLEAR_RADIUS, BACKDROP_SIZE,
@@ -189,13 +189,73 @@ def init_environment():
     backdrop.set_shader_input('fog_start', 800)
     backdrop.set_shader_input('fog_end', 5000)
 
-    # Trees — planted ON the terrain, outside the roost bowl
-    for i in range(60):
-        x, z = random.uniform(-TERRAIN_SIZE/2 + 10, TERRAIN_SIZE/2 - 10), random.uniform(-TERRAIN_SIZE/2 + 10, TERRAIN_SIZE/2 - 10)
-        if (x*x + z*z) ** 0.5 < ROOST_CLEAR_RADIUS + 5:
-            continue
+    # --- Procedural props: trees (trunk+crown), valley bushes, slope rocks ---
+    # All props sit on height_at(x, z) = max(playfield, backdrop), so they stay
+    # flush on the hills AND the encroaching corner/mountain skirts. Sampling is
+    # vectorized rejection sampling against a fixed-seed rng -> deterministic
+    # world, instant startup (380 cheap entities).
+    rng = np.random.default_rng(TERRAIN_SEED + 2)
+    margin = 12.0
+    lo, hi = -TERRAIN_SIZE / 2 + margin, TERRAIN_SIZE / 2 - margin
+
+    def _scatter(n, keep, attempts=30):
+        """Rejection-sample n (x, z) points in the playfield box.
+        keep(x, z, h) -> bool mask over vectorized candidates."""
+        pts, need = [], n
+        for _ in range(attempts):
+            cand = rng.uniform(lo, hi, size=(int(need * 3) + 8, 2))
+            h = height_at(cand[:, 0], cand[:, 1])
+            sel = cand[keep(cand[:, 0], cand[:, 1], h)][:need]
+            pts.append(sel)
+            need -= len(sel)
+            if need <= 0:
+                break
+        return np.vstack(pts) if pts else np.zeros((0, 2), dtype=np.float64)
+
+    r_of = lambda x, z: np.sqrt(x * x + z * z)
+
+    # 1. Trees — trunk + foliage crown, outside the roost clearing
+    tree_pts = _scatter(80, lambda x, z, h: r_of(x, z) > ROOST_CLEAR_RADIUS + 10)
+    for x, z in tree_pts:
         h = float(height_at(x, z))
-        e = Entity(model='cube', color=color.dark_gray, scale=(1, random.uniform(5, 15), 1),
-                   position=(x, h, z))
-        e.y += e.scale_y / 2
+        trunk_h = rng.uniform(4.0, 9.0)
+        Entity(model='cube', color=color.rgb(90, 60, 40),
+               scale=(0.8, trunk_h, 0.8), position=(x, h + trunk_h / 2, z))
+        cw, ch, cd = rng.uniform(3.0, 6.0, size=3)
+        crown_model = 'sphere' if rng.random() < 0.6 else 'cube'
+        crown = Entity(model=crown_model, color=color.rgb(40, 90, 45),
+                       scale=(cw, ch, cd),
+                       position=(x, h + trunk_h + ch * 0.30, z))
+        crown.y_rotation = rng.uniform(0, 360)
+
+    # 2. Bushes — low and wide in the valleys (low elevation, outside the bowl)
+    bush_pts = _scatter(120, lambda x, z, h:
+                        (h < TERRAIN_AMP * 0.4) & (r_of(x, z) > ROOST_CLEAR_RADIUS + 5))
+    for x, z in bush_pts:
+        h = float(height_at(x, z))
+        bw, bd = rng.uniform(1.5, 3.0, size=2)
+        Entity(model='cube', color=color.rgb(60, 110, 50),
+               scale=(bw, rng.uniform(0.6, 1.1), bd),
+               position=(x, h + 0.25, z), y_rotation=rng.uniform(0, 360))
+
+    # 3. Rocks/boulders — steeper slopes (central-difference gradient) OR the
+    #    backdrop mountain skirts (r > 35% of field size). Anchored by sinking
+    #    the block ~40% of its height into the ground.
+    def _slope(x, z):
+        e = 4.0
+        dhx = height_at(x + e, z) - height_at(x - e, z)
+        dhz = height_at(x, z + e) - height_at(x, z - e)
+        return (np.abs(dhx) + np.abs(dhz)) / (2 * e)
+
+    rock_pts = _scatter(100, lambda x, z, h:
+                        (_slope(x, z) > 0.35) | (r_of(x, z) > TERRAIN_SIZE * 0.35))
+    for x, z in rock_pts:
+        h = float(height_at(x, z))
+        s = rng.uniform(1.5, 4.0)
+        rock_model = 'cube' if rng.random() < 0.7 else 'sphere'
+        rock = Entity(model=rock_model, color=color.rgb(100, 105, 115),
+                      scale=(s * rng.uniform(0.8, 1.2), s, s * rng.uniform(0.8, 1.2)),
+                      position=(x, h + s / 2 - s * 0.4, z))
+        rock.y_rotation = rng.uniform(0, 360)
+        rock.x_rotation = rng.uniform(-8, 8)  # slight tilt = less grid-aligned
     return sky, terrain, backdrop

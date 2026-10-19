@@ -13,3 +13,7 @@ scratch/
 
 # raw source model (14MB; the sim renders assets/hawk.glb)
 hawk.stl
+
+# retired model + old evolution archives (kept on disk, not tracked)
+assets/hawk_old.glb
+evolution_old/

@@ -24,11 +24,13 @@ from config import TERRAIN_SIZE, TERRAIN_AMP, BACKDROP_AMP
 # --- 1. meshes bit-identical: the visual shell must not have shifted ------
 h_hash = hashlib.sha256(terrain.heightmap.tobytes()).hexdigest()
 b_hash = hashlib.sha256(terrain.backdrop_hm.tobytes()).hexdigest()
-assert h_hash.startswith('e5a3c7f9ec2f6ca5'), f'heightmap changed: {h_hash}'
-# backdrop pin updated 2026-10-18: user retuned BACKDROP_RES 64 -> 32 in
-# config.py (deliberate coarser/cheaper ring). Playfield hash unchanged.
-assert b_hash.startswith('b68adda4b21cacbc'), f'backdrop_hm changed: {b_hash}'
-print('PASS meshes bit-identical (heightmap e5a3c7f9..., backdrop b68adda4...)')
+# hash pins re-recorded 2026-10-18: user retuned terrain seed 5->7,
+# size 1200->1400, cell 0.6->0.4 (backdrop feathered center mirrors the
+# play surface, so both meshes shift together).
+assert h_hash.startswith('87646cf35f3f1723'), f'heightmap changed: {h_hash}'
+# backdrop pin: BACKDROP_RES 32 (coarse deliberate), RES=32 output.
+assert b_hash.startswith('d5dc10ff7bb7cb63'), f'backdrop_hm changed: {b_hash}'
+print('PASS meshes bit-identical (heightmap 87646cf3..., backdrop d5dc10ff...)')
 
 # --- 2. center: play surface wins (backdrop = play - 3 there) -------------
 hc = terrain.height_at(0.0, 0.0)

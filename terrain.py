@@ -81,7 +81,7 @@ def build_terrain_mesh():
     # flat-shaded vertex colors from height (low-poly look)
     cols = np.zeros((TERRAIN_RES + 1, TERRAIN_RES + 1, 4), dtype=np.float32)
     h = heightmap
-    grass = np.array([0.10, 0.16, 0.09]); high = np.array([0.32, 0.33, 0.30])
+    grass = np.array([0.24, 0.48, 0.16]); high = np.array([0.45, 0.58, 0.28])
     t = np.clip((h + 1) / (TERRAIN_AMP + 1), 0, 1)[:, :, None]
     rgb = grass * (1 - t) + high * t
     # darken steep slopes for definition

@@ -20,7 +20,7 @@ orbit_wobble_speed = 1.0   # scales the off-beat wave freqs (x1.37 X, x0.79 Z)
 roost_base_altitude = 65.0  # meters above terrain the roost cruises at
 vertical_speed = 0.02      # rad/s; slow Y swoop (0 = flat altitude)
 vertical_amplitude = 10.0  # meters above/below base altitude
-gravity = 0.015            # pitch-gravity: speed gain/loss per frame along f_y (dive accelerates, climb bleeds)
+gravity = 0.01            # pitch-gravity: speed gain/loss per frame along f_y (dive accelerates, climb bleeds)
 min_bird_speed = 0.8       # airspeed floor: a starling never stalls to zero in mid-air
 dive_speed_mult = 1.35     # max-speed multiplier in a straight-down stoop
 climb_speed_mult = 0.65    # max-speed multiplier in a straight-up climb
@@ -80,11 +80,11 @@ mutation_heavy = 0.20       # tier 3: wildcard lineage (high-variance lottery)
 fitness_catch = 1500.0      # points per catch
 proximity_radius = 150.0    # closing within this earns a per-frame bonus (0..1 scaled)
 proximity_gain = 3.0        # proximity bonus multiplier per frame
-ground_penalty = 0.9        # fitness subtracted per frame under min clearance
+ground_penalty = 10        # fitness subtracted per frame under min clearance
 ground_clearance = 3.2      # meters above terrain considered a scrape
 dogfight_radius = 25.0      # stalking bonus activates inside this range
 dogfight_gain = 2.0         # per-frame reward for tail-chasing (range x aim alignment)
-boundary_penalty = 0.9      # per-frame penalty for scraping wall/ceiling
+boundary_penalty = 10      # per-frame penalty for scraping wall/ceiling
 boundary_scrape_dist = 15.0  # meters from wall (or below ceiling) counted as scraping
 persist = true              # keep evolved weights between runs
 save_folder = "evolution"   # folder next to main.py: population.npz + history.csv
@@ -105,10 +105,10 @@ hidden_layers = [32, 16]  # starling tribe MLP hidden widths: (17 sensors) -> 32
                           # starling_tribes.npz shape guard starts the tribes FRESH.
 
 [terrain]
-size = 1200               # field width/depth
-cell = 0.6                # meters per grid cell (lower = more detail)
+size = 1400               # field width/depth
+cell = 0.4                # meters per grid cell (lower = more detail)
 amplitude = 15.0          # max hill height
-seed = 5                  # change for a different world
+seed = 7                  # change for a different world
 roost_clear_radius = 30.0 # flat bowl around the flock
 fog_density = 0.024      # visibility falloff
 
@@ -119,8 +119,8 @@ force_cpu = false         # true = skip GPU even if VRAM looks free
 [rabbits]
 num_rabbits = 100           # ground prey population (pure NumPy state machine)
 num_burrows = 20            # invisible burrows (physics only, never rendered)
-flee_radius = 25.0          # hawk closer than this -> Flee (state 3)
-freeze_radius = 50.0        # hawk in 25..50m band -> Freeze (state 2)
+flee_radius = 50.0          # hawk closer than this -> Flee (state 3)
+freeze_radius = 100.0        # hawk in flee..freeze band -> Freeze (state 2)
 recover_radius = 30.0       # fleeing rabbit reverts to Vigilance past this (hysteresis)
 forage_speed = 0.8          # m/s slow random walk
 flee_speed = 6.0            # m/s sprint to the nearest burrow

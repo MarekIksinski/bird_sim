@@ -23,7 +23,7 @@ from config import (NUM_BIRDS, NEIGHBOR_COUNT, SEPARATION_DIST, ROOST_RADIUS,
                     CASUALTY_DECAY, TERRAIN_SIZE, PANIC_RADIUS, FORCE_FLEE,
                     PANIC_MAX_SPEED, GENERATION_SECONDS,
                     FLOCK_GRAVITY, MIN_BIRD_SPEED, DIVE_SPEED_MULT,
-                    CLIMB_SPEED_MULT, STARLING_HIDDEN_LAYERS)
+                    CLIMB_SPEED_MULT, STARLING_HIDDEN_LAYERS, MAX_ALTITUDE)
 import predators
 import terrain
 
@@ -44,13 +44,15 @@ roost_center = cp.array([0, ROOST_BASE_ALTITUDE, 0], dtype=cp.float32)
 # CONTIGUOUS blocks (bird i -> tribe i // BIRDS_PER_TRIBE) so the forward
 # pass reshapes to (T, BIRDS_PER_TRIBE, n) and einsums against tiny
 # (T, ni, no) weights — fast on CPU cache AND on GPU, identical code paths.
-# (17 inputs since the gravity update: +bird airspeed, +vertical pitch f_y,
-# so tribes can learn to dive for speed and manage climb stalls. The
-# starling checkpoint shape guard starts fresh tribes on mismatch.)
+# (21 inputs since the arena-boundary update: the 17 gravity-era sensors
+# plus 4 arena-awareness sensors — wall repulsion projected on the local
+# forward/right axes, nearest-wall proximity, ceiling clearance — so
+# fleeing tribes can steer INWARD instead of baiting hawks into the walls.
+# The starling checkpoint shape guard starts fresh tribes on mismatch.)
 # Hidden-layer widths come from config [flock_nn] hidden_layers
 # (default [32, 16]): arbitrary depth/width, every unpack/upload/forward
 # loop runs over len(STARLING_NET_SHAPE) - 1 layers.
-STARLING_NET_SHAPE = (17,) + STARLING_HIDDEN_LAYERS + (6,)
+STARLING_NET_SHAPE = (21,) + STARLING_HIDDEN_LAYERS + (6,)
 STARLING_GENOME_LEN = sum(STARLING_NET_SHAPE[i] * STARLING_NET_SHAPE[i+1] +
                           STARLING_NET_SHAPE[i+1] for i in range(len(STARLING_NET_SHAPE) - 1))
 bird_tribe_np = np.arange(NUM_BIRDS) // BIRDS_PER_TRIBE
@@ -270,9 +272,10 @@ def update_boids_gpu():
     obs_gpu[:, 10] = cp.sum(sep_norm * f, axis=1)
     obs_gpu[:, 11] = cp.sum(sep_norm * r, axis=1)
     obs_gpu[:, 12] = cp.sum(sep_norm * u, axis=1)
-    # environment: ground clearance + roost distance
+    # environment: ground clearance + roost distance (normalized over
+    # 4x ROOST_RADIUS so birds that stray far still keep a gradient back)
     obs_gpu[:, 13] = cp.clip(clearance_obs / 25.0, -1.0, 1.0)
-    obs_gpu[:, 14] = cp.clip(dist_to_roost[:, 0] / ROOST_RADIUS, 0.0, 1.0)
+    obs_gpu[:, 14] = cp.clip(dist_to_roost[:, 0] / (ROOST_RADIUS * 4.0), 0.0, 1.0)
     # --- gravity proprioception: airspeed (0 at the MIN_BIRD_SPEED floor,
     # +1 at the deepest-dive cap) + vertical pitch f_y so tribes can feel
     # the stoop/climb energy exchange and learn to dive for speed.
@@ -280,6 +283,20 @@ def update_boids_gpu():
                              / (PANIC_MAX_SPEED * DIVE_SPEED_MULT - MIN_BIRD_SPEED) * 2.0 - 1.0,
                              -1.0, 1.0)
     obs_gpu[:, 16] = cp.clip(f[:, 1], -1.0, 1.0)
+    # --- arena awareness (mirrors predators._hawk_observations): inward
+    # wall-repulsion projected onto the body axes + nearest-wall proximity
+    # + ceiling clearance, so fleeing tribes steer INWARD instead of
+    # baiting hawks into the boundary. ---
+    half_obs = TERRAIN_SIZE / 2 - 1.0
+    wall_sensor = 100.0
+    rep_x = (1.0 - cp.clip((half_obs - cp.abs(pos_gpu[:, 0])) / wall_sensor, 0.0, 1.0)) * -cp.sign(pos_gpu[:, 0])
+    rep_z = (1.0 - cp.clip((half_obs - cp.abs(pos_gpu[:, 2])) / wall_sensor, 0.0, 1.0)) * -cp.sign(pos_gpu[:, 2])
+    obs_gpu[:, 17] = rep_x * f[:, 0] + rep_z * f[:, 2]   # "safety is ahead"
+    obs_gpu[:, 18] = rep_x * r[:, 0] + rep_z * r[:, 2]   # "...is to my right"
+    edge_gpu = cp.minimum(half_obs - cp.abs(pos_gpu[:, 0]),
+                          half_obs - cp.abs(pos_gpu[:, 2]))
+    obs_gpu[:, 19] = cp.clip(edge_gpu / wall_sensor, 0.0, 1.0)   # 0 = at wall, 1 = safe
+    obs_gpu[:, 20] = cp.clip((MAX_ALTITUDE - pos_gpu[:, 1]) / 30.0, 0.0, 1.0)
     cp.clip(obs_gpu, -1.0, 1.0, out=obs_gpu)
 
     a = obs_gpu.reshape(NUM_TRIBES, BIRDS_PER_TRIBE, STARLING_NET_SHAPE[0])
@@ -359,6 +376,25 @@ def update_boids_gpu():
     clearance = pos_gpu[:, 1] - cp.array(ground_np, dtype=cp.float32)
     vel_gpu[:, 1] += cp.where(clearance < 3.0, 0.5, cp.where(clearance < 6.0, 0.15, 0)) * dt_scale
 
+    # --- Soft arena containment (mirrors the hawk wall/ceiling deflection):
+    # X/Z walls turn fleeing birds slightly INSIDE the hawks' sensor wall
+    # (TERRAIN_SIZE/2 - 1.0), and a soft ceiling mirrors the floor push, so
+    # a panic-driven bird curves along the boundary instead of pinning to it.
+    half = TERRAIN_SIZE / 2 - 5.0
+    wall_soft = 60.0
+    for ax in (0, 2):
+        dist_to_wall = half - cp.abs(pos_gpu[:, ax])
+        inward_sign = -cp.sign(pos_gpu[:, ax])
+        push = cp.where(dist_to_wall < wall_soft,
+                        inward_sign * ((wall_soft - cp.maximum(dist_to_wall, 0.0))
+                                       / wall_soft) ** 2 * 0.6,
+                        0.0)
+        vel_gpu[:, ax] += push * dt_scale
+    # Soft ceiling avoidance (mirror of floor avoidance below MAX_ALTITUDE)
+    ceil_clearance = (MAX_ALTITUDE - 5.0) - pos_gpu[:, 1]
+    vel_gpu[:, 1] += cp.where(ceil_clearance < 5.0, -0.5,
+                              cp.where(ceil_clearance < 15.0, -0.15, 0.0)) * dt_scale
+
     # --- MIN_BIRD_SPEED floor: a starling never stalls to zero in mid-air
     # (birds keep flying even at the bottom of a climb). Placed AFTER the
     # floor-avoidance boost: that boost can cancel a diving bird's vertical
@@ -372,6 +408,13 @@ def update_boids_gpu():
     # framerate-independent. Speed clamps above operate on raw vel_gpu.)
     pos_gpu += vel_gpu * dt_scale
 
+    # --- Hard arena clamp: no starling can physically leave the arena,
+    # whatever the forces above did this frame. ---
+    cp.clip(pos_gpu[:, 0], -half, half, out=pos_gpu[:, 0])
+    cp.clip(pos_gpu[:, 2], -half, half, out=pos_gpu[:, 2])
+    cp.clip(pos_gpu[:, 1], cp.array(ground_np, dtype=cp.float32) + 0.5,
+            MAX_ALTITUDE - 2.0, out=pos_gpu[:, 1])
+
     # 8b. Per-bird survival/cohesion score (CPU): surviving is worth 1/s,
     # sticking near the local neighbor centroid adds up to +0.5/s, surviving
     # INSIDE a hawk's PANIC_RADIUS adds up to +2.5/s scaled by proximity —
@@ -383,8 +426,17 @@ def update_boids_gpu():
     cohesion_bonus = np.clip(1.0 - cohere_dist_np / 15.0, 0.0, 1.0)
     clearance_np = to_cpu(clearance)
     evasion_bonus = np.clip(1.0 - nearest_d_np / PANIC_RADIUS, 0.0, 1.0)
+    # boundary scrape: hugging the arena walls (within 25m of the soft
+    # wall line on X/Z) or the ceiling (within 10m of MAX_ALTITUDE) costs
+    # 1.5/s, so the Moran process selects for tribes that evade INWARD.
+    pos_clamped_np = to_cpu(pos_gpu)
+    edge_np = np.minimum(half - np.abs(pos_clamped_np[:, 0]),
+                         half - np.abs(pos_clamped_np[:, 2]))
+    boundary_scrape_np = ((edge_np < 25.0)
+                          | (pos_clamped_np[:, 1] > MAX_ALTITUDE - 10.0)).astype(np.float32)
     bird_score += time.dt * (1.0 + 0.5 * cohesion_bonus + 2.5 * evasion_bonus
-                             - 1.0 * (clearance_np < 2.0))
+                             - 1.0 * (clearance_np < 2.0)
+                             - 1.5 * boundary_scrape_np)
 
     # 8c. Tribe casualty counters decay exponentially (framerate-independent:
     # multiplier = exp(-CASUALTY_DECAY * dt), exact for any dt). Old deaths

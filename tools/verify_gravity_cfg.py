@@ -11,7 +11,7 @@ _str_h = tuple(_raw.get('flock_nn', {}).get('hidden_layers', [32, 16]))
 print('NET_SHAPE', predators.NET_SHAPE, 'GENOME_LEN', predators.GENOME_LEN)
 print('STARLING_NET_SHAPE', flock.STARLING_NET_SHAPE, 'STARLING_GENOME_LEN', flock.STARLING_GENOME_LEN)
 assert predators.NET_SHAPE == (15,) + _hawk_h + (4,), predators.NET_SHAPE
-assert flock.STARLING_NET_SHAPE == (17,) + _str_h + (6,), flock.STARLING_NET_SHAPE
+assert flock.STARLING_NET_SHAPE == (21,) + _str_h + (6,), flock.STARLING_NET_SHAPE
 print('hawk gravity consts:', config.HAWK_GRAVITY, config.DIVE_MAX_SPEED,
       config.MIN_FLIGHT_SPEED, config.STALL_SPEED)
 print('hawk stamina consts:', config.BOOST_DURATION, config.BOOST_RECHARGE,

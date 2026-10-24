@@ -100,7 +100,7 @@ num_tribes = 20           # one shared MLP per tribe; birds split into contiguou
 mutation_sigma = 0.06     # gaussian noise on offspring tribe weights
 replace_deaths = 5        # tribe loses this many birds -> replaced by mutated top-3 parent
 casualty_decay = 0.0005     # per-second exponential fade of the casualty counter (0 = never decay)
-hidden_layers = [32, 16]  # starling tribe MLP hidden widths: (17 sensors) -> 32 -> 16 -> (6 outputs).
+hidden_layers = [32, 16]  # starling tribe MLP hidden widths: (21 sensors) -> 32 -> 16 -> (6 outputs).
                           # Any depth/width works; changing it changes STARLING_GENOME_LEN, so the
                           # starling_tribes.npz shape guard starts the tribes FRESH.
 

@@ -84,7 +84,7 @@ TRIBE_REPLACE_DEATHS = int(_get('flock_nn', 'replace_deaths', 5))
 # isolated deaths still slowly fade. 0.0 disables decay.
 CASUALTY_DECAY = float(_get('flock_nn', 'casualty_decay', 0.0005))
 # Hidden-layer widths of the starling tribe MLP: STARLING_NET_SHAPE =
-# (17,) + hidden + (6,) in flock.py. Arbitrary depth/width; the
+# (21,) + hidden + (6,) in flock.py. Arbitrary depth/width; the
 # checkpoint shape guard starts fresh tribes on any mismatch.
 def _hidden_layers(section, key, default):
     v = _get(section, key, default)

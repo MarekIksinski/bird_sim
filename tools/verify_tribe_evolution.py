@@ -5,7 +5,7 @@ Imports the real flock/predators modules (FORCE_CPU shim) and checks:
  1. config: TRIBE_REPLACE_DEATHS / CASUALTY_DECAY defaults match config.toml
     (parsed from the toml, never hardcoded — the user retunes live), and the
     half-life math behind the 0.0005/s value.
- 2. STARLING_NET_SHAPE stays (17,16,8,6) so existing checkpoints load.
+ 2. STARLING_NET_SHAPE stays (21,16,8,6) so existing checkpoints load.
  3. Simulating TRIBE_REPLACE_DEATHS catches in one tribe triggers
     _tribe_respawn_check, increments starling_evolutions, and writes a
     [flock_nn] line into evolution.log via log_event.
@@ -52,7 +52,7 @@ print(f"PASS config: replace_deaths={config.TRIBE_REPLACE_DEATHS}, "
       f"(half-life {np.log(2.0)/config.CASUALTY_DECAY:.0f}s)")
 
 # --- 2. net shape: must match config [flock_nn] hidden_layers -------------
-assert flock.STARLING_NET_SHAPE == (17,) + config.STARLING_HIDDEN_LAYERS + (6,), flock.STARLING_NET_SHAPE
+assert flock.STARLING_NET_SHAPE == (21,) + config.STARLING_HIDDEN_LAYERS + (6,), flock.STARLING_NET_SHAPE
 print('PASS STARLING_NET_SHAPE matches config hidden_layers:', flock.STARLING_NET_SHAPE)
 
 # --- helpers ---------------------------------------------------------------

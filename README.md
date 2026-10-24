@@ -15,9 +15,12 @@ NumPy when VRAM is tight).
   birds bleed speed (down to 0.65x), and a minimum airspeed floor keeps every
   bird flying — no hovering mid-air stalls.
 - **Flock neural nets** — one small MLP per tribe (birds split into
-  contiguous blocks; 17 observations incl. airspeed + vertical pitch so
-  tribes can sense and exploit gravity). Hidden widths are configurable:
-  `[flock_nn] hidden_layers = [32, 16]` -> shape (17,32,16,6); any
+  contiguous blocks; 21 observations incl. airspeed + vertical pitch +
+  arena awareness (wall repulsion on the body axes, nearest-wall
+  proximity, ceiling clearance) so
+  tribes can sense and exploit gravity and steer inward at the boundary).
+  Hidden widths are configurable:
+  `[flock_nn] hidden_layers = [32, 16]` -> shape (21,32,16,6); any
   depth/width works, and changing it starts the tribes fresh (shape
   guard on `starling_tribes.npz`). Tribes co-evolve against the hawks
   via a Moran process: a tribe that loses 5 birds (counter decays with a
@@ -173,11 +176,18 @@ main.py       entrypoint orchestrator (init order + global input/update)
   parse, the config-derived net shapes, and that fresh populations match the
   new genome lengths. Run: `.venv/bin/python tools/verify_gravity_cfg.py`
 - `tools/verify_hidden_layers.py` — configurable MLP hidden widths:
-  default shapes (15,32,16,4)/(17,32,16,6) match config.toml, batched
+  default shapes (15,32,16,4)/(21,32,16,6) match config.toml, batched
   forwards emit (POP,4)/(NUM_BIRDS,6), genome unpack round-trips,
   arbitrary depth/width via a variant config.toml subprocess
   ([8,4,8,2] and [64]), and old-shape checkpoints are rejected -> fresh.
   Run: `.venv/bin/python tools/verify_hidden_layers.py`
+- `tools/verify_arena.py` — arena containment gate: birds re-flung at max
+  panic speed every 60 frames stay inside the hard clamp (|x|,|z| <=
+  TERRAIN_SIZE/2-5, y <= max_altitude-2), the soft wall push bends vx
+  inward and the soft ceiling push bends vy down, the wall sensor math
+  gives strong inward repulsion at the boundary, and the boundary-scrape
+  penalty makes a wall-hugging bird score below a mid-arena one.
+  Run: `FORCE_CPU=1 .venv/bin/python tools/verify_arena.py` (~2 min on CPU)
 - `tools/verify_stamina.py` — offscreen harness for the boost-stamina
   cycle: pinned full throttle drains the tank in `boost_duration`, the
   exhaustion lockout clamps throttle to 0 and holds until

@@ -2,7 +2,7 @@
 """verify_hidden_layers.py — configurable MLP hidden widths gate.
 
 1. With the LIVE config.toml (default [32, 16] both):
-   NET_SHAPE == (15, 32, 16, 4), STARLING_NET_SHAPE == (17, 32, 16, 6),
+   NET_SHAPE == (15, 32, 16, 4), STARLING_NET_SHAPE == (21, 32, 16, 6),
    and the GENOME_LEN sums match.
 2. Batched forwards run and emit (POPULATION_SIZE, 4) for the hawk pack
    (via _stack_population + the real einsum/tanh loop form) and
@@ -34,7 +34,7 @@ str_h = tuple(raw.get('flock_nn', {}).get('hidden_layers', [32, 16]))
 assert config.HAWK_HIDDEN_LAYERS == hawk_h
 assert config.STARLING_HIDDEN_LAYERS == str_h
 assert predators.NET_SHAPE == (15,) + hawk_h + (4,), predators.NET_SHAPE
-assert flock.STARLING_NET_SHAPE == (17,) + str_h + (6,), flock.STARLING_NET_SHAPE
+assert flock.STARLING_NET_SHAPE == (21,) + str_h + (6,), flock.STARLING_NET_SHAPE
 exp_gl = sum(predators.NET_SHAPE[i] * predators.NET_SHAPE[i+1] + predators.NET_SHAPE[i+1]
              for i in range(len(predators.NET_SHAPE) - 1))
 assert predators.GENOME_LEN == exp_gl, (predators.GENOME_LEN, exp_gl)
@@ -42,7 +42,7 @@ exp_sgl = sum(flock.STARLING_NET_SHAPE[i] * flock.STARLING_NET_SHAPE[i+1] + floc
               for i in range(len(flock.STARLING_NET_SHAPE) - 1))
 assert flock.STARLING_GENOME_LEN == exp_sgl
 assert predators.NET_SHAPE == (15, 32, 16, 4), predators.NET_SHAPE
-assert flock.STARLING_NET_SHAPE == (17, 32, 16, 6), flock.STARLING_NET_SHAPE
+assert flock.STARLING_NET_SHAPE == (21, 32, 16, 6), flock.STARLING_NET_SHAPE
 print(f'PASS shapes: NET_SHAPE={predators.NET_SHAPE} GENOME_LEN={predators.GENOME_LEN} '
       f'| STARLING_NET_SHAPE={flock.STARLING_NET_SHAPE} SGL={flock.STARLING_GENOME_LEN}')
 
@@ -110,7 +110,7 @@ code = textwrap.dedent(f'''
     assert config.HAWK_HIDDEN_LAYERS == (8, 4, 8, 2), config.HAWK_HIDDEN_LAYERS
     assert config.STARLING_HIDDEN_LAYERS == (64,), config.STARLING_HIDDEN_LAYERS
     assert predators.NET_SHAPE == (15, 8, 4, 8, 2, 4), predators.NET_SHAPE
-    assert flock.STARLING_NET_SHAPE == (17, 64, 6), flock.STARLING_NET_SHAPE
+    assert flock.STARLING_NET_SHAPE == (21, 64, 6), flock.STARLING_NET_SHAPE
     exp = sum(predators.NET_SHAPE[i]*predators.NET_SHAPE[i+1] + predators.NET_SHAPE[i+1]
               for i in range(len(predators.NET_SHAPE)-1))
     assert predators.GENOME_LEN == exp, (predators.GENOME_LEN, exp)
@@ -127,7 +127,7 @@ code = textwrap.dedent(f'''
         a = np.tanh(np.einsum('ni,nio->no', a, W) + b)
     assert a.shape == (predators.POPULATION_SIZE, 4)
     flock._upload_tribe_layers()
-    assert len(flock.tribe_Ws) == 2 and flock.tribe_Ws[0].shape[1:] == (17, 64)
+    assert len(flock.tribe_Ws) == 2 and flock.tribe_Ws[0].shape[1:] == (21, 64)
     print('VARIANT_OK')
 ''')
 import subprocess as _sp
@@ -135,7 +135,7 @@ r = _sp.run([sys.executable, '-u', '-c', code], capture_output=True, text=True,
             timeout=180, cwd=d, env={**os.environ, 'FORCE_CPU': '1'})
 assert 'VARIANT_OK' in r.stdout, f'variant config failed:\n{r.stdout}\n{r.stderr}'
 print('PASS arbitrary depth/width: hawk [8,4,8,2] -> (15,8,4,8,2,4), '
-      'starling [64] -> (17,64,6); forwards + fresh pops OK')
+      'starling [64] -> (21,64,6); forwards + fresh pops OK')
 
 # ---------- part C: checkpoint shape guard rejects old widths ----------
 # write a checkpoint in the OLD (15,16,8,4) layout into a temp save dir,

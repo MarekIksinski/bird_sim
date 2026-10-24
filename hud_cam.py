@@ -18,6 +18,7 @@ from math3d import _slerp_np, _q_rot_b
 import terrain
 import predators
 import flock
+import foxes
 import player
 
 hawk_info = None
@@ -152,10 +153,12 @@ def update_camera_and_hud():
         _stam, _cool = float(predators.pack_stamina[_trk]), bool(predators.pack_exhausted[_trk])
     _line = (f'Gen: {predators.generation} | Time: {GENERATION_SECONDS - predators.gen_elapsed:.1f}s | '
              f'Best Kills: {int(predators.gen_kills[predators.best_idx])} | Flock Evo: {flock.starling_evolutions} | '
+             f'Fox Evo: {foxes.fox_evolutions} | '
              f'Stamina: {int(round(_stam * 100))}%' + (' [COOL]' if _cool else ''))
     if _line != _last_gen_line:
         _last_gen_line = _line
         gen_text.text = _line
-    _catch_line = f'catches: {predators.total_catches} (you: {player.player_catches})'
+    _catch_line = (f'catches: {predators.total_catches} (you: {player.player_catches}) '
+                   f'| foxes: {foxes.fox_total_catches}')
     if kill_counter.text != _catch_line:
         kill_counter.text = _catch_line

@@ -13,6 +13,7 @@ main.py — entrypoint orchestrator. Module hierarchy (bottom -> top):
     predators.py hawk pack state, neuroevolution, flight, checkpoints
     flock.py     starling state, tribe NNs, boids step, FlockVisuals
     rabbits.py   ground prey FSM + RabbitVisuals
+    foxes.py     ground predator pairs, Moran pair evolution, FoxVisuals
     hud_cam.py   camera modes, HUD text, keyboard
 
 State is ALWAYS reached through the module namespace (predators.best_idx,
@@ -30,21 +31,24 @@ import terrain
 import predators
 import flock
 import rabbits
+import foxes
 import player
 import hud_cam
 
 app = Ursina(vsync=False)
 
-# --- persistence: resume the evolved pack + starling tribes, then rebuild
-# the cp-resident tribe layer tensors from whatever was loaded ---
+# --- persistence: resume the evolved pack + starling tribes + fox pairs,
+# then rebuild the cp-resident tribe layer tensors from whatever was loaded ---
 predators.load_checkpoint()
 flock._upload_tribe_layers()
+foxes._upload_pair_layers()
 
 # --- environment + entities (all Ursina object creation happens here,
 # after Ursina() exists) ---
 terrain.init_environment()
 flock_viz = flock.FlockVisuals()
 rabbit_viz = rabbits.RabbitVisuals()
+fox_viz = foxes.FoxVisuals()
 predators.init_pack_visuals()
 player.init_player_visuals()
 hud_cam.init_hud_and_camera()

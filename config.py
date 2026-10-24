@@ -243,3 +243,31 @@ RABBIT_RECOVER_RADIUS = float(_get('rabbits', 'recover_radius', 30.0))  # hawk f
 RABBIT_FORAGE_SPEED = float(_get('rabbits', 'forage_speed', 0.8))     # m/s (true SI, dt-scaled)
 RABBIT_FLEE_SPEED = float(_get('rabbits', 'flee_speed', 6.0))         # m/s sprint
 RABBIT_ESCAPE_RADIUS = float(_get('rabbits', 'escape_radius', 1.0))   # dive into burrow below this
+
+# --- fox pairs (ground predators, continuous Moran evolution) ---
+NUM_FOXES = int(_get('foxes', 'num_foxes', 10))
+NUM_PAIRS = int(_get('foxes', 'num_pairs', 5))
+if NUM_PAIRS < 1 or NUM_FOXES % NUM_PAIRS != 0:
+    # contiguous pair blocks must split exactly (same policy as NUM_TRIBES)
+    _orig = NUM_PAIRS
+    while NUM_PAIRS > 1 and NUM_FOXES % NUM_PAIRS != 0:
+        NUM_PAIRS -= 1
+    print(f"[foxes] num_pairs adjusted to {NUM_PAIRS} so foxes split evenly")
+FOXES_PER_PAIR = NUM_FOXES // NUM_PAIRS
+FOX_CRUISE_SPEED = float(_get('foxes', 'cruise_speed', 3.5))
+FOX_BOOST_SPEED = float(_get('foxes', 'boost_speed', 7.8))
+FOX_STALK_FACTOR = float(_get('foxes', 'stalk_factor', 0.35))
+FOX_YAW_RATE = float(_get('foxes', 'yaw_rate', 140.0))
+FOX_TURN_DRAG = float(_get('foxes', 'turn_drag', 1.2))
+FOX_BOOST_DURATION = float(_get('foxes', 'boost_duration', 1.8))
+FOX_BOOST_RECHARGE = float(_get('foxes', 'boost_recharge', 4.5))
+FOX_BOOST_COOLDOWN_RECOVER = float(_get('foxes', 'boost_cooldown_recover', 1.0))
+FOX_CATCH_RADIUS = float(_get('foxes', 'catch_radius', 1.2))
+FOX_STEALTH_FLEE_RADIUS = float(_get('foxes', 'stealth_flee_radius', 7.5))
+FOX_STEALTH_FREEZE_RADIUS = float(_get('foxes', 'stealth_freeze_radius', 22.0))
+FOX_SPRINT_FLEE_RADIUS = float(_get('foxes', 'sprint_flee_radius', 50.0))
+FOX_PROXIMITY_RADIUS = float(_get('foxes', 'proximity_radius', 80.0))
+FOX_STARVE_SECONDS = float(_get('foxes', 'starve_seconds', 45.0))
+FOX_STALK_HUNGER_RELIEF = float(_get('foxes', 'stalk_hunger_relief', 0.4))
+FOX_MUTATION_SIGMA = float(_get('foxes', 'mutation_sigma', 0.07))
+FOX_HIDDEN_LAYERS = _hidden_layers('foxes', 'hidden_layers', [24, 12])

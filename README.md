@@ -56,9 +56,23 @@ NumPy when VRAM is tight).
   ground/wall/ceiling scrapes). Between generations, a **3-tiered
   speciation** scheme breeds the top 3: champion lineage with tiny mutation
   (exploitation), runner-up with medium, wildcard with heavy (exploration).
-- **Rabbit prey layer** — 100 rabbits on a pure-NumPy 4-state machine
+- **Rabbit prey layer** — 200 rabbits on a pure-NumPy 4-state machine
   (Forage / Vigilance / Freeze / Flee) that react to the nearest hawk and
   sprint to invisible burrows, diving underground when cornered.
+- **Fox pairs (ground predators, continuous evolution)** — 10 foxes in 5
+  pairs, each pair sharing one 12-input MLP (prey direction/velocity/state
+  in the body frame, the prey's escape route to its nearest burrow, own
+  speed + stamina sensors, wall repulsion). Speed-modulated stealth: a
+  creeping fox only triggers rabbit Flee at 7.5m / Freeze at 22m, a
+  sprinting fox at the full hawk thresholds (50m/100m) — the raw distance
+  is rescaled into the hawk-threshold space so the rabbit FSM works
+  unchanged. Touch (1.2m) = catch: the rabbit respawns Frozen at a random
+  burrow and the pair is credited. Evolution is a **Moran process on
+  starvation** (no generation reset): a pair that goes 45s without a catch
+  (hunger clock slowed while it stalks silently) is replaced by a mutated
+  copy of a top score-RATE parent, checkpointed to
+  `evolution/fox_pairs.npz` with its own shape guard. Boost runs on the
+  same stamina tank/lockout design as the hawks.
 - **Spectator hawk (player)** — a keyboard-piloted hawk flying the same
   6-DOF quaternion physics, wall/ceiling deflection, gravity stoop/climb
   energy exchange, stall nose-drop and ground clearance as the AI pack. It
@@ -84,8 +98,8 @@ starling tribe replacements with parent lineage, timestamped and flushed
 live for `tail -f`) and `history.csv` (one rich row per generation for
 charting). Everything respects `[pack] persist = false`.
 
-All tunables live in `config.toml` (flock, hawk, player, pack, rabbits,
-terrain, game). Gravity/dive knobs: `[hawk]` `gravity`, `dive_max_speed`,
+All tunables live in `config.toml` (flock, flock_nn, hawk, player, pack,
+rabbits, foxes, terrain, game). Gravity/dive knobs: `[hawk]` `gravity`, `dive_max_speed`,
 `min_flight_speed`, `stall_speed`, `lift_grip`, `induced_drag` (all shared
 by the player) and `[flock]`
 `gravity`, `min_bird_speed`, `dive_speed_mult`, `climb_speed_mult`.
@@ -133,6 +147,8 @@ terrain.py    heightmaps + height_at at import; sky/terrain/backdrop +
 predators.py  hawk pack state, neuroevolution, flight physics, checkpoints
 flock.py      starling state, tribe NNs, update_boids_gpu, FlockVisuals
 rabbits.py    ground-prey FSM, update_rabbits, RabbitVisuals
+foxes.py      ground predator pairs: pair MLPs, Moran starvation
+              replacement, stealth threat scaling (via rabbits), FoxVisuals
 player.py     spectator hawk state + keyboard flight (live predator:
               fed to predators/rabbits as an extra threat; catches only
               bump player.player_catches)
@@ -188,6 +204,13 @@ main.py       entrypoint orchestrator (init order + global input/update)
   gives strong inward repulsion at the boundary, and the boundary-scrape
   penalty makes a wall-hugging bird score below a mid-arena one.
   Run: `FORCE_CPU=1 .venv/bin/python tools/verify_arena.py` (~2 min on CPU)
+- `tools/verify_foxes.py` — fox pair layer gate: every `[foxes]` key parsed
+  from config.toml, exact pair split + FOX_NET_SHAPE/genome match, wall
+  soak + stamina drain/lockout/recharge, speed-modulated stealth thresholds
+  (creep vs sprint), catch -> burrow respawn + pair credit, starvation
+  Moran replacement with rate-ranking and [fox_nn] log line, batched
+  einsum-vs-loop forward match, fox_pairs.npz round-trip + shape guard.
+  Run: `FORCE_CPU=1 .venv/bin/python tools/verify_foxes.py`
 - `tools/verify_stamina.py` — offscreen harness for the boost-stamina
   cycle: pinned full throttle drains the tank in `boost_duration`, the
   exhaustion lockout clamps throttle to 0 and holds until

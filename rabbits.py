@@ -13,9 +13,14 @@ from ursina import Entity, Mesh, color, time
 from config import (NUM_BURROWS, NUM_RABBITS, RABBIT_FLEE_RADIUS,
                     RABBIT_FREEZE_RADIUS, RABBIT_RECOVER_RADIUS,
                     RABBIT_FORAGE_SPEED, RABBIT_FLEE_SPEED,
-                    RABBIT_ESCAPE_RADIUS, TERRAIN_SIZE)
+                    RABBIT_ESCAPE_RADIUS, TERRAIN_SIZE,
+                    FOX_STEALTH_FLEE_RADIUS,
+                    FOX_STEALTH_FREEZE_RADIUS, FOX_SPRINT_FLEE_RADIUS,
+                    FOX_CATCH_RADIUS, FOX_BOOST_SPEED, FOX_CRUISE_SPEED,
+                    FOX_STALK_FACTOR)
 import predators
 import player
+import foxes
 import terrain
 
 _rabbit_rng = np.random.default_rng()
@@ -44,7 +49,50 @@ def update_rabbits():
     # the player hawk (freeze/flee/recover thresholds both react to it)
     d_pack = np.linalg.norm(rabbit_pos[:, None, :] - predators.pack_pos[None, :, :], axis=2).min(axis=1)
     d_player = np.linalg.norm(rabbit_pos - player.player_pos[None, :], axis=1)
-    d = np.minimum(d_pack, d_player)
+
+    # --- fox threats: speed-modulated stealth. A creeping fox (min stalk
+    # speed) is only heard at FOX_STEALTH_FLEE_RADIUS and freezes at
+    # FOX_STEALTH_FREEZE_RADIUS; a sprinting one at the rabbit's own hawk
+    # thresholds (FOX_SPRINT_FLEE_RADIUS / RABBIT_FREEZE_RADIUS). The raw
+    # distance is rescaled per fox so those two anchor radii map onto
+    # RABBIT_FLEE_RADIUS / RABBIT_FREEZE_RADIUS — at full sprint the map is
+    # the identity (matching the task's simple formula), and the existing
+    # state-machine thresholds then work unchanged. ---
+    d_fox_raw = np.linalg.norm(rabbit_pos[:, None, :] - foxes.fox_pos[None, :, :], axis=2)  # (R,F)
+    stalk_min_spd = FOX_CRUISE_SPEED * FOX_STALK_FACTOR
+    noise = np.clip((foxes.fox_speed - stalk_min_spd)
+                    / max(FOX_BOOST_SPEED - stalk_min_spd, 1e-6), 0.0, 1.0)
+    eff_flee_r = FOX_STEALTH_FLEE_RADIUS + noise * (FOX_SPRINT_FLEE_RADIUS - FOX_STEALTH_FLEE_RADIUS)
+    eff_freeze_r = FOX_STEALTH_FREEZE_RADIUS + noise * (RABBIT_FREEZE_RADIUS - FOX_STEALTH_FREEZE_RADIUS)
+    inside = d_fox_raw <= eff_flee_r[None, :]
+    beyond_freeze = d_fox_raw > eff_freeze_r[None, :]
+    d_fox_perceived = np.where(
+        inside,
+        d_fox_raw * (RABBIT_FLEE_RADIUS / eff_flee_r[None, :]),
+        np.where(
+            beyond_freeze,
+            RABBIT_FREEZE_RADIUS + (d_fox_raw - eff_freeze_r[None, :]),
+            RABBIT_FLEE_RADIUS + (d_fox_raw - eff_flee_r[None, :])
+            * ((RABBIT_FREEZE_RADIUS - RABBIT_FLEE_RADIUS)
+               / np.maximum(eff_freeze_r[None, :] - eff_flee_r[None, :], 1e-6))))
+    d_fox = d_fox_perceived.min(axis=1)
+    d = np.minimum(np.minimum(d_pack, d_player), d_fox)
+
+    # --- fox catches: any rabbit a fox literally touches is eaten; the
+    # rabbit respawns Frozen at a random burrow (like the burrow escape),
+    # the catching fox's pair is credited in foxes.register_fox_catch. ---
+    caught_fox_idx = d_fox_raw.argmin(axis=1)
+    caught = d_fox_raw.min(axis=1) < FOX_CATCH_RADIUS
+    if caught.any():
+        ci = np.where(caught)[0]
+        foxes.register_fox_catch(caught_fox_idx[ci])
+        new_b = burrow_xz[_rabbit_rng.integers(0, NUM_BURROWS, size=len(ci))]
+        rabbit_pos[ci, 0] = new_b[:, 0]
+        rabbit_pos[ci, 2] = new_b[:, 1]
+        rabbit_pos[ci, 1] = terrain.height_at(new_b[:, 0], new_b[:, 1])
+        rabbit_vel[ci] = 0.0
+        rabbit_state[ci] = 2         # Frozen at the burrow mouth
+        rabbit_timer[ci] = 2.0
 
     # --- threat triggers ---
     rabbit_state[d < RABBIT_FLEE_RADIUS] = 3

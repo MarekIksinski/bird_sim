@@ -121,6 +121,7 @@ hof_fitness = -1e9     # float; EMA-blended all-time standing of the King
 _CKPT = os.path.join(EVOLVE_DIR, 'population.npz')
 _HISTORY = os.path.join(EVOLVE_DIR, 'history.csv')
 _STARLING_CKPT = os.path.join(EVOLVE_DIR, 'starling_tribes.npz')
+_FOX_CKPT = os.path.join(EVOLVE_DIR, 'fox_pairs.npz')
 _LOG_FILE = os.path.join(EVOLVE_DIR, 'evolution.log')
 
 def log_event(msg):
@@ -188,12 +189,28 @@ def _load_checkpoint_state():
             if tp.shape != (flock.NUM_TRIBES, flock.STARLING_GENOME_LEN):
                 print(f"[persist] starling checkpoint shape {tp.shape} != config "
                       f"({flock.NUM_TRIBES},{flock.STARLING_GENOME_LEN}); tribes start fresh")
-                return
-            flock.tribe_pop = tp.astype(np.float32)
-            flock.starling_evolutions = int(s['starling_evolutions'])
-            print(f"[persist] {flock.starling_evolutions} starling tribe evolutions resumed")
+            else:
+                flock.tribe_pop = tp.astype(np.float32)
+                flock.starling_evolutions = int(s['starling_evolutions'])
+                print(f"[persist] {flock.starling_evolutions} starling tribe evolutions resumed")
         except Exception as e:
             print(f"[persist] could not load starling checkpoint ({e}); tribes start fresh")
+    # fox pair genomes (separate file, own shape guard)
+    if os.path.exists(_FOX_CKPT):
+        try:
+            import foxes   # lazy: foxes imports rabbits which imports this module
+            s = np.load(_FOX_CKPT)
+            pp = s['pair_pop']
+            if pp.shape != (foxes.NUM_PAIRS, foxes.FOX_GENOME_LEN):
+                print(f"[persist] fox checkpoint shape {pp.shape} != config "
+                      f"({foxes.NUM_PAIRS},{foxes.FOX_GENOME_LEN}); pairs start fresh")
+            else:
+                foxes.pair_pop = pp.astype(np.float32)
+                foxes.fox_evolutions = int(s['fox_evolutions'])
+                foxes.fox_total_catches = int(s['fox_total_catches'])
+                print(f"[persist] {foxes.fox_evolutions} fox pair evolutions resumed")
+        except Exception as e:
+            print(f"[persist] could not load fox checkpoint ({e}); pairs start fresh")
 
 def save_checkpoint():
     """Persist the CURRENT population under the CURRENT generation number.
@@ -212,6 +229,10 @@ def save_checkpoint():
         import flock   # lazy: the starling checkpoint lives in flock's state
         np.savez(_STARLING_CKPT, tribe_pop=flock.tribe_pop,
                  starling_evolutions=flock.starling_evolutions)
+        import foxes   # lazy: the fox pair checkpoint lives in foxes' state
+        np.savez(_FOX_CKPT, pair_pop=foxes.pair_pop,
+                 fox_evolutions=foxes.fox_evolutions,
+                 fox_total_catches=foxes.fox_total_catches)
     except Exception as e:
         print(f"[persist] could not save checkpoint ({e})")
 

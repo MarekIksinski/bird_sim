@@ -113,7 +113,7 @@ roost_clear_radius = 30.0 # flat bowl around the flock
 fog_density = 0.024      # visibility falloff
 
 [game]
-start_camera = 2          # 1 fixed wide, 2 pack-chase (best hawk), 3 AI first-person (TAB cycles), 4 player chase, 5 player first-person
+start_camera = 2          # 1 fixed wide, 2 pack-chase (best hawk), 3 AI first-person (TAB cycles), 4 player chase, 5 player first-person, 6 fox chase (TAB cycles fox), 7 fox first-person
 force_cpu = false         # true = skip GPU even if VRAM looks free
 
 [rabbits]

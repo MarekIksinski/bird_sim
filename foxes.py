@@ -32,6 +32,7 @@ from config import (NUM_FOXES, NUM_PAIRS, FOXES_PER_PAIR, TERRAIN_SIZE,
                     FOX_MUTATION_SIGMA, FOX_HIDDEN_LAYERS,
                     RABBIT_FLEE_SPEED, COLOR_FOX)
 import terrain
+from math3d import _q_from_aa_b, _q_mul_b
 
 _fox_rng = np.random.default_rng(4321)
 _fox_edge = TERRAIN_SIZE / 2 - 10.0          # same arena line rabbits clamp to
@@ -96,6 +97,35 @@ fox_speed = np.full(NUM_FOXES, FOX_CRUISE_SPEED, dtype=np.float32)
 fox_stamina = np.ones(NUM_FOXES, dtype=np.float32)     # 1.0 = full tank
 fox_exhausted = np.zeros(NUM_FOXES, dtype=bool)
 fox_hop_phase = np.zeros(NUM_FOXES, dtype=np.float32)
+
+# --- camera tracking indices (mirror predators.best_idx / predators.sel_idx) ---
+best_fox_idx = 0        # fox of the highest score-RATE pair, closest to prey
+sel_fox_idx = 0         # TAB-cycled in the fox camera modes (hud_cam)
+sel_used = False        # True once TAB has picked a fox in a fox cam (mode 5
+                        # then follows sel_fox_idx instead of best_fox_idx)
+
+# smoothed pitch (deg) along the local terrain slope, for fox_quat()
+_fox_pitch_deg = np.zeros(NUM_FOXES, dtype=np.float32)
+
+
+def fox_quat(idx):
+    """Unit quaternion [x,y,z,w] for fox idx: yaw from fox_yaw + a pitch
+    sampled from the terrain slope 1.0m ahead (smoothed), so the fox chase
+    and first-person cams tilt naturally over hills instead of clipping."""
+    yaw = float(fox_yaw[idx])
+    fx, fz = np.sin(yaw), np.cos(yaw)
+    x, z = float(fox_pos[idx, 0]), float(fox_pos[idx, 2])
+    h0 = float(terrain.height_at(x, z))
+    h1 = float(terrain.height_at(x + fx, z + fz))
+    slope_deg = np.degrees(np.arctan2(h1 - h0, 1.0))
+    _fox_pitch_deg[idx] += (slope_deg - _fox_pitch_deg[idx]) * 0.15
+    q_yaw = _q_from_aa_b(np.array([[0.0, 1.0, 0.0]]), np.array([np.degrees(yaw)]))[0]
+    # pitch about the body right axis r = f x up = (cos yaw, 0, -sin yaw);
+    # positive slope (ground rising ahead) must pitch the nose UP
+    q_pitch = _q_from_aa_b(np.array([[np.cos(yaw), 0.0, -np.sin(yaw)]]),
+                           np.array([-float(_fox_pitch_deg[idx])]))[0]
+    q = _q_mul_b(q_yaw[None, :], q_pitch[None, :])[0]
+    return q / np.linalg.norm(q)
 
 # --- pair bookkeeping (Moran process) ---
 pair_score = np.zeros(NUM_PAIRS, dtype=np.float32)
@@ -232,6 +262,14 @@ def update_foxes():
     np.maximum.at(pair_stalking, fox_pair_np, stalking)
     pair_starvation += dt * np.where(pair_stalking,
                                      1.0 - FOX_STALK_HUNGER_RELIEF, 1.0)
+
+    # --- camera: best fox = member of the top score-RATE pair closest to a
+    # rabbit (mirrors predators.best_idx; fox_quat/speed/stamina read by hud) ---
+    global best_fox_idx
+    pair_rate = pair_score / np.maximum(pair_survival_time, 10.0)
+    best_P = int(np.argmax(pair_rate))
+    members = np.arange(NUM_FOXES)[fox_pair_np == best_P]
+    best_fox_idx = int(members[np.argmin(dmin[members])])
 
     _pair_starve_check()
 

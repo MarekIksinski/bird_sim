@@ -29,14 +29,15 @@ _last_gen_line = ''
 
 # --- 5. CAMERA ---
 # config start_camera: 1 fixed wide, 2 pack chase (best hawk), 3 first-person
-# (selected), 4 player chase cam, 5 player first-person cam
-curr_mode = max(0, min(4, START_CAMERA - 1))
+# (selected), 4 player chase cam, 5 player first-person cam,
+# 6 fox chase cam, 7 fox first-person cam
+curr_mode = max(0, min(6, START_CAMERA - 1))
 
 def init_hud_and_camera():
     """Create the HUD Text objects and set the initial camera pose.
     Call only AFTER app = Ursina(...) exists."""
     global hawk_info, gen_text, kill_counter
-    hawk_info = Text('1-3 AI cams  4/5 Player cams  WASD/QE/Shift/Ctrl fly  TAB cycle AI  ESC quit',
+    hawk_info = Text('1-3 Hawk cams  4/5 Player cams  6/7 Fox cams  WASD/QE/Shift/Ctrl fly  TAB cycle  ESC quit',
                      origin=(0, 0), y=-0.45, size=0.035, color=color.rgba32(*COLOR_HUD_INFO))
     gen_text = Text('Gen: 1 | Time: 0.0s | Best Kills: 0', origin=(0, 0), y=-0.38, size=0.045,
                     color=color.rgba32(*COLOR_HUD_GEN))
@@ -55,9 +56,18 @@ def handle_input(key):
     if key == '3': curr_mode = 2
     if key == '4': curr_mode = 3   # player chase cam
     if key == '5': curr_mode = 4   # player first-person cam
+    if key == '6': curr_mode = 5   # fox chase cam
+    if key == '7': curr_mode = 6   # fox first-person cam
     if key in config.PLAYER_KEYS['reset']:
         player.reset_player()
-    if key == 'tab': predators.sel_idx = (predators.sel_idx + 1) % POPULATION_SIZE
+    if key == 'tab':
+        # context-aware: in the fox cams TAB cycles the tracked fox,
+        # everywhere else it cycles the AI hawk
+        if curr_mode in (5, 6):
+            foxes.sel_fox_idx = (foxes.sel_fox_idx + 1) % config.NUM_FOXES
+            foxes.sel_used = True
+        else:
+            predators.sel_idx = (predators.sel_idx + 1) % POPULATION_SIZE
     if key == 'escape': application.base.userExit()
 
 def update_camera_and_hud():
@@ -73,10 +83,21 @@ def update_camera_and_hud():
     # hide the player body in the player first-person cam
     if player.player_entity is not None:
         player.player_entity.visible = (curr_mode != 4)
-    # --- speed FOV warp on the tracked hawk ---
+    # the fox tracked by the fox cams (mode 5: best, or TAB-cycled once used;
+    # mode 6: always the TAB-cycled fox)
+    if curr_mode == 6:
+        _fox_trk = foxes.sel_fox_idx
+    elif curr_mode == 5:
+        _fox_trk = foxes.sel_fox_idx if foxes.sel_used else foxes.best_fox_idx
+    else:
+        _fox_trk = foxes.best_fox_idx
+    # --- speed FOV warp on the tracked hawk/fox ---
     if curr_mode in (3, 4):
         _spd = player.player_speed
         _cruise, _boost = config.PLAYER_CRUISE_SPEED, config.PLAYER_BOOST_SPEED
+    elif curr_mode in (5, 6):
+        _spd = float(foxes.fox_speed[_fox_trk])
+        _cruise, _boost = config.FOX_CRUISE_SPEED, config.FOX_BOOST_SPEED
     else:
         track = predators.sel_idx if curr_mode == 2 else predators.best_idx
         _spd = float(predators.pack_speed[track])
@@ -104,7 +125,7 @@ def update_camera_and_hud():
         # the lerped camera inside the mesh -> whole frame becomes flat rock.
         cam_ground = float(terrain.height_at(camera.position.x, camera.position.z))
         if camera.position.y < cam_ground + 2.5:
-            camera.position.y = cam_ground + 2.5
+            camera.position = Vec3(camera.position.x, cam_ground + 2.5, camera.position.z)
         # PQuat/LQuaternionf index as [0]=w(r), [1]=x(i), [2]=y(j), [3]=z(k)
         # (verified against getR/getI/getJ/getK) — _slerp_np uses (x,y,z,w),
         # so read with a [1,2,3,0] rotation and write back PQuat(w,x,y,z).
@@ -129,10 +150,11 @@ def update_camera_and_hud():
         off = _q_rot_b(q_best[None, :], off_b[None, :])[0]
         wanted_pos = Vec3(*(target_pos + off))
         camera.position = lerp(camera.position, wanted_pos, min(cdt * 6, 1.0))
-        # keep the chase camera out of the terrain
+        # keep the chase camera out of the terrain (reassign the WHOLE Vec3:
+        # camera.position returns a fresh copy, so .y = would be lost)
         cam_ground = float(terrain.height_at(camera.position.x, camera.position.z))
         if camera.position.y < cam_ground + 2.5:
-            camera.position.y = cam_ground + 2.5
+            camera.position = Vec3(camera.position.x, cam_ground + 2.5, camera.position.z)
         q_tgt = np.array([q_best[0], q_best[1], q_best[2], q_best[3]])  # (x,y,z,w)
         cq = camera.quaternion
         q_cur = np.array([cq[1], cq[2], cq[3], cq[0]])                  # (w,x,y,z) -> (x,y,z,w)
@@ -144,12 +166,49 @@ def update_camera_and_hud():
         u = _q_rot_b(q[None, :], np.array([0.0, 1.0, 0.0]))[0]
         camera.position = Vec3(*(player.player_pos + u * 0.3))
         camera.quaternion = PQuat(q[3], q[0], q[1], q[2])
+    elif curr_mode == 5:
+        # fox chase cam: same shape as mode 3 but tracking a ground fox with
+        # the terrain-slope-tilted quat from foxes.fox_quat()
+        target_pos = foxes.fox_pos[_fox_trk].copy()
+        target_pos[1] += (abs(np.sin(foxes.fox_hop_phase[_fox_trk]))
+                          * min(float(foxes.fox_speed[_fox_trk]) / foxes.FOX_BOOST_SPEED, 1.0) * 0.5)
+        q_fox = foxes.fox_quat(_fox_trk)
+        off_b = np.array([0.0, 1.8, -5.5])   # body frame (r, u, f): above+behind
+        off = _q_rot_b(q_fox[None, :], off_b[None, :])[0]
+        wanted_pos = Vec3(*(target_pos + off))
+        camera.position = lerp(camera.position, wanted_pos, min(cdt * 6, 1.0))
+        # keep the chase camera out of the terrain (reassign the WHOLE
+        # Vec3: camera.position returns a fresh copy, so .y = would be lost)
+        cam_ground = float(terrain.height_at(camera.position.x, camera.position.z))
+        if camera.position.y < cam_ground + 1.2:
+            camera.position = Vec3(camera.position.x, cam_ground + 1.2, camera.position.z)
+        cq = camera.quaternion
+        q_cur = np.array([cq[1], cq[2], cq[3], cq[0]])                  # (w,x,y,z) -> (x,y,z,w)
+        q_out = _slerp_np(q_cur, q_fox, min(cdt * 4.0, 1.0))
+        camera.quaternion = PQuat(q_out[3], q_out[0], q_out[1], q_out[2])
+    elif curr_mode == 6:
+        # fox first-person cam: sits 0.9m AHEAD of the nose tip (dart nose is
+        # at z=0.85) so the camera never clips inside the batched fox mesh
+        pos = foxes.fox_pos[_fox_trk].copy()
+        pos[1] += (abs(np.sin(foxes.fox_hop_phase[_fox_trk]))
+                   * min(float(foxes.fox_speed[_fox_trk]) / foxes.FOX_BOOST_SPEED, 1.0) * 0.5)
+        q_fox = foxes.fox_quat(_fox_trk)
+        fwd = _q_rot_b(q_fox[None, :], np.array([0.0, 0.0, 1.0]))[0]
+        up = _q_rot_b(q_fox[None, :], np.array([0.0, 1.0, 0.0]))[0]
+        camera.position = Vec3(*(pos + fwd * 0.9 + up * 0.45))
+        cq = camera.quaternion
+        q_cur = np.array([cq[1], cq[2], cq[3], cq[0]])                  # (w,x,y,z) -> (x,y,z,w)
+        q_out = _slerp_np(q_cur, q_fox, min(cdt * 10.0, 1.0))
+        camera.quaternion = PQuat(q_out[3], q_out[0], q_out[1], q_out[2])
     # HUD
     # stamina readout for the currently tracked hawk: player in modes 3/4,
     # otherwise the chase/FP AI hawk (sel_idx in FP mode 2, best hawk in 0/1).
     # [COOL] flags the exhaustion lockout (boost blocked until recharged).
     if curr_mode in (3, 4):
         _stam, _cool = float(player.player_stamina), player.player_exhausted
+    elif curr_mode in (5, 6):
+        _stam = float(foxes.fox_stamina[_fox_trk])
+        _cool = bool(foxes.fox_exhausted[_fox_trk])
     else:
         _trk = predators.sel_idx if curr_mode == 2 else predators.best_idx
         _stam, _cool = float(predators.pack_stamina[_trk]), bool(predators.pack_exhausted[_trk])

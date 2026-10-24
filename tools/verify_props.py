@@ -44,9 +44,10 @@ from config import TERRAIN_SIZE, TERRAIN_AMP, ROOST_CLEAR_RADIUS
 
 props = [e for e in scene.entities if e not in (terrain.terrain, terrain.backdrop)
          and e.model and 'hawk' not in str(getattr(e, 'model', ''))]
-# categorise by color (ursina's color.rgb is 0-255 scale; no slicing on color)
+# categorise by color (colors are stored 0..1; rgba32() divides by 255 —
+# compare against rgb32, i.e. value*255; no slicing on color)
 def _c3(e):
-    return (round(e.color[0]), round(e.color[1]), round(e.color[2]))
+    return (round(e.color[0] * 255), round(e.color[1] * 255), round(e.color[2] * 255))
 trunks = [e for e in props if _c3(e) == (90, 60, 40)]
 crowns = [e for e in props if _c3(e) == (40, 90, 45)]
 bushes = [e for e in props if _c3(e) == (60, 110, 50)]

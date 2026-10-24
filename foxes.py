@@ -100,7 +100,11 @@ fox_hop_phase = np.zeros(NUM_FOXES, dtype=np.float32)
 # --- pair bookkeeping (Moran process) ---
 pair_score = np.zeros(NUM_PAIRS, dtype=np.float32)
 pair_survival_time = np.zeros(NUM_PAIRS, dtype=np.float32)
-pair_starvation = np.zeros(NUM_PAIRS, dtype=np.float32)
+# STAGGERED hunger clocks: all-zero clocks make every fresh pair hit
+# starve_seconds at the same frame -> synchronized mass-replacement waves
+# that spike Fox Evo. Random 0-20s offsets keep replacements spread out,
+# and each replaced pair gets a fresh random offset (see _pair_starve_check).
+pair_starvation = _fox_rng.uniform(0.0, 20.0, size=NUM_PAIRS).astype(np.float32)
 pair_kills = np.zeros(NUM_PAIRS, dtype=np.int32)
 fox_evolutions = 0
 fox_total_catches = 0
@@ -270,27 +274,32 @@ def _pair_starve_check():
         return
     import predators   # lazy (foxes <-> predators cycle, same as flock)
 
-    alive = np.setdiff1d(np.arange(NUM_PAIRS), starving)
+    # ONE replacement per call — the single most starved pair. Batch-wiping
+    # every starving pair at once turns any residual clock sync into a
+    # visible Fox Evo spike wave.
+    P = int(starving[np.argmax(pair_starvation[starving])])
+    alive = np.setdiff1d(np.arange(NUM_PAIRS), [P])
     rate = pair_score / np.maximum(pair_survival_time, 10.0)
     mature = alive[pair_survival_time[alive] >= 15.0] if len(alive) else alive
     pool = mature if len(mature) else alive
     if len(pool) == 0:
         pool = np.array([int(np.argmax(rate))])   # all starving: best of a bad lot
-    parents = [int(pool[np.argmax(rate[pool])])] * len(starving)
+    parent = int(pool[np.argmax(rate[pool])])
 
-    for P, parent in zip(starving, parents):
-        child = pair_pop[parent] + _fox_rng.normal(
-            0.0, FOX_MUTATION_SIGMA, size=FOX_GENOME_LEN).astype(np.float32)
-        pair_pop[P] = child
-        pair_score[P] = 0.0
-        pair_survival_time[P] = 0.0
-        pair_starvation[P] = 0.0
-        pair_kills[P] = 0
-        _respawn_pair(P)
+    child = pair_pop[parent] + _fox_rng.normal(
+        0.0, FOX_MUTATION_SIGMA, size=FOX_GENOME_LEN).astype(np.float32)
+    pair_pop[P] = child
+    pair_score[P] = 0.0
+    pair_survival_time[P] = 0.0
+    # staggered re-entry clock (like the fresh init) so replacements never
+    # re-synchronize into a second wave
+    pair_starvation[P] = _fox_rng.uniform(0.0, 10.0)
+    pair_kills[P] = 0
+    _respawn_pair(P)
     _upload_pair_layers()
-    fox_evolutions += len(starving)
+    fox_evolutions += 1
     predators.log_event(
-        f"[fox_nn] pair(s) {list(starving)} replaced by parent(s) {parents} "
+        f"[fox_nn] pair {P} replaced by parent {parent} "
         f"| top_pair_rate {float(rate[pool][np.argmax(rate[pool])]):.3f}")
     predators.save_checkpoint()
 
@@ -301,7 +310,10 @@ class FoxVisuals(Entity):
         super().__init__()
         self.model = Mesh(vertices=[], triangles=[], colors=[], mode='triangle', static=False)
         self.texture = 'white_cube'
-        self.color = color.rgb(215, 85, 25)   # sleek rust-orange darts
+        # rgba32, NOT rgb(): in this ursina build rgb() is 0..1-scale
+        # (rgb = rgba alias) — rgb(215,85,25) stores a 215x color scale that
+        # clamps to WHITE in the shader (probed: case1 white vs case2 rust).
+        self.color = color.rgba32(215, 85, 25)   # sleek rust-orange darts
         self.double_sided = True
         self.fox_shape = np.array([[0, 0, 0.85], [-0.28, 0, -0.45], [0.28, 0, -0.45]], dtype=np.float32)
 

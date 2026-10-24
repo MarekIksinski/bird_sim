@@ -173,7 +173,7 @@ def init_environment():
     main.py calls this AFTER app = Ursina(vsync=False)."""
     global terrain, backdrop
     sky = Sky(texture='sky_sunset')  # noqa: F841  (kept alive by ursina's scene)
-    scene.fog_color = color.rgb(20, 30, 20)
+    scene.fog_color = color.rgba32(20, 30, 20)
     # NOTE: the fog_density setter only re-shaders entities that EXIST at
     # call time — main.py RE-applies it (config._FOG_RANGE) after all
     # entities are built, just before app.run().
@@ -219,11 +219,11 @@ def init_environment():
     for x, z in tree_pts:
         h = float(height_at(x, z))
         trunk_h = rng.uniform(4.0, 9.0)
-        Entity(model='cube', color=color.rgb(90, 60, 40),
+        Entity(model='cube', color=color.rgba32(90, 60, 40),
                scale=(0.8, trunk_h, 0.8), position=(x, h + trunk_h / 2, z))
         cw, ch, cd = rng.uniform(3.0, 6.0, size=3)
         crown_model = 'sphere' if rng.random() < 0.6 else 'cube'
-        crown = Entity(model=crown_model, color=color.rgb(40, 90, 45),
+        crown = Entity(model=crown_model, color=color.rgba32(40, 90, 45),
                        scale=(cw, ch, cd),
                        position=(x, h + trunk_h + ch * 0.30, z))
         crown.y_rotation = rng.uniform(0, 360)
@@ -234,7 +234,7 @@ def init_environment():
     for x, z in bush_pts:
         h = float(height_at(x, z))
         bw, bd = rng.uniform(1.5, 3.0, size=2)
-        Entity(model='cube', color=color.rgb(60, 110, 50),
+        Entity(model='cube', color=color.rgba32(60, 110, 50),
                scale=(bw, rng.uniform(0.6, 1.1), bd),
                position=(x, h + 0.25, z), y_rotation=rng.uniform(0, 360))
 
@@ -253,7 +253,7 @@ def init_environment():
         h = float(height_at(x, z))
         s = rng.uniform(1.5, 4.0)
         rock_model = 'cube' if rng.random() < 0.7 else 'sphere'
-        rock = Entity(model=rock_model, color=color.rgb(100, 105, 115),
+        rock = Entity(model=rock_model, color=color.rgba32(100, 105, 115),
                       scale=(s * rng.uniform(0.8, 1.2), s, s * rng.uniform(0.8, 1.2)),
                       position=(x, h + s / 2 - s * 0.4, z))
         rock.y_rotation = rng.uniform(0, 360)

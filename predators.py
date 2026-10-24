@@ -723,14 +723,14 @@ def update_pack(pos_np, vel_np):
 # The hawk pack — the GLB models + rank colors (spawned by init_pack_visuals
 # AFTER Ursina() exists; update_pack_visuals rides them every frame).
 pack_entities = []
-GOLD = color.rgb(255, 200, 40)
-MUTED = color.rgb(150, 70, 50)
-BRIGHT = color.rgb(230, 50, 40)
+GOLD = color.rgba32(255, 200, 40)
+MUTED = color.rgba32(150, 70, 50)
+BRIGHT = color.rgba32(230, 50, 40)
 
 def init_pack_visuals():
     """Spawn the hawk entities — call only AFTER app = Ursina(...) exists."""
     for i in range(POPULATION_SIZE):
-        e = Entity(model='assets/hawk.glb', color=color.rgb(150, 70, 50))
+        e = Entity(model='assets/hawk.glb', color=color.rgba32(150, 70, 50))
         pack_entities.append(e)
 
 def update_pack_visuals():

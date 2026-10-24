@@ -80,7 +80,7 @@ def init_player_visuals():
     """Spawn the player hawk entity — call only AFTER app = Ursina(...) exists.
     Cyan/sky-blue tint so it reads as distinct from the AI pack's reds/golds."""
     global player_entity
-    player_entity = Entity(model='assets/hawk.glb', color=color.rgb(80, 220, 255))
+    player_entity = Entity(model='assets/hawk.glb', color=color.rgba32(80, 220, 255))
     reset_player()
 
 

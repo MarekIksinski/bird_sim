@@ -161,7 +161,7 @@ class RabbitVisuals(Entity):
         super().__init__()
         self.model = Mesh(vertices=[], triangles=[], colors=[], mode='triangle', static=False)
         self.texture = 'white_cube'
-        self.color = color.rgb(140, 100, 70)   # small brown rabbits
+        self.color = color.rgba32(140, 100, 70)   # small brown rabbits (rgba32: rgb() is 0..1-scale here)
         self.double_sided = True
         self.rabbit_shape = np.array([[0, 0, 0.4], [-0.15, 0, -0.15], [0.15, 0, -0.15]], dtype=np.float32)
 

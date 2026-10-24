@@ -68,11 +68,15 @@ NumPy when VRAM is tight).
   is rescaled into the hawk-threshold space so the rabbit FSM works
   unchanged. Touch (1.2m) = catch: the rabbit respawns Frozen at a random
   burrow and the pair is credited. Evolution is a **Moran process on
-  starvation** (no generation reset): a pair that goes 45s without a catch
-  (hunger clock slowed while it stalks silently) is replaced by a mutated
-  copy of a top score-RATE parent, checkpointed to
+  starvation** (no generation reset): each check replaces only the SINGLE
+  most-starved pair (hunger clocks start staggered 0-20s and re-stagger on
+  replacement, so fresh pairs never starve out in a synchronized wave),
+  swapped for a mutated copy of a top score-RATE parent, checkpointed to
   `evolution/fox_pairs.npz` with its own shape guard. Boost runs on the
   same stamina tank/lockout design as the hawks.
+  NOTE: all entity colors use `color.rgba32(r,g,b)` — in this ursina build
+  `color.rgb()` is 0..1-scale (an `rgba` alias), so `rgb(215,85,25)` stores
+  a 215x color scale that clamps to WHITE.
 - **Spectator hawk (player)** — a keyboard-piloted hawk flying the same
   6-DOF quaternion physics, wall/ceiling deflection, gravity stoop/climb
   energy exchange, stall nose-drop and ground clearance as the AI pack. It

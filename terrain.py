@@ -100,22 +100,27 @@ def build_terrain_mesh():
     return m
 
 # --- 2b. BACKDROP MOUNTAINS (visual shell + physics ground in the corners) ---
-# NOTE: the blend is RADIAL (r = sqrt(x^2+z^2) starts rising at TERRAIN_SIZE/2)
-# while the playable arena is a SQUARE — so in the four arena corners the
-# backdrop mountains rise ABOVE the playfield heightmap inside the walls.
-# height_at() below therefore returns max(playfield, backdrop): the encroaching
-# corner ridges are solid ground for physics, AI clearance sensors, rabbit
-# ground clamping, tree placement, and camera collision, not just visuals.
+# The backdrop grid is deliberately coarse (BACKDROP_RES=32 over 4000m =
+# 125m triangles), so ANY backdrop vertex above the play heightmap inside or
+# adjacent to the playable square pokes dark grey polygons through the green
+# terrain. Fix: a SQUARE cutout (Chebyshev distance, matching the square
+# arena — a radial mask leaves the four corners exposed) that pins the
+# backdrop at a deep floor inside TERRAIN_SIZE/2 + 150m, then smoothstep-
+# ramps up to the full BACKDROP_AMP ring over the next 350m (150..500m
+# beyond the playable edge). height_at() below still returns
+# max(playfield, backdrop): inside the arena backdrop << playfield min (-1m
+# waterline), so the play surface wins everywhere; outside, the ramped-up
+# corner ridges stay solid ground for physics, AI clearance sensors, rabbit
+# ground clamping, tree placement, and camera collision.
 backdrop_hm = _make_heightmap(TERRAIN_SEED + 1, BACKDROP_RES, BACKDROP_SIZE, BACKDROP_AMP)
-# Feather the center instead of a hard basin: the backdrop continues the PLAY
-# surface ~3m below it out to the map edge (r=600), then blends up into the
-# mountain ring over the next 100m (just outside the invisible walls at ~599).
+_bd_cut = TERRAIN_SIZE / 2 + 150.0    # deep floor out to 150m past the walls
+_bd_ramp = 350.0                      # full mountain height by +500m past
+_bd_floor = -TERRAIN_AMP - 25.0       # below the lowest play elevation
 _blin = np.linspace(-BACKDROP_SIZE / 2, BACKDROP_SIZE / 2, BACKDROP_RES + 1)
 _bx, _bz = np.meshgrid(_blin, _blin)
-_br = np.sqrt(_bx**2 + _bz**2)
-_play_floor = _play_height_at(_bx, _bz) - 3.0   # _play_height_at clamps coords: extends the edge
-_blend = _smooth(np.clip((_br - TERRAIN_SIZE / 2) / 100.0, 0, 1))
-backdrop_hm = _play_floor * (1 - _blend) + backdrop_hm * _blend
+_bc = np.maximum(np.abs(_bx), np.abs(_bz))          # square (Chebyshev) distance
+_blend = _smooth(np.clip((_bc - _bd_cut) / _bd_ramp, 0, 1))
+backdrop_hm = _bd_floor * (1 - _blend) + backdrop_hm * _blend
 
 _bcell = BACKDROP_SIZE / BACKDROP_RES
 

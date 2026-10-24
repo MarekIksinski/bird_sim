@@ -12,7 +12,8 @@ from ursina import (Vec3, camera, color, application, lerp, Text,
 from panda3d.core import Quat as PQuat
 
 from config import (POPULATION_SIZE, START_CAMERA, BASE_FOV, BOOST_FOV,
-                    GENERATION_SECONDS, CRUISE_SPEED, PRED_BOOST)
+                    GENERATION_SECONDS, CRUISE_SPEED, PRED_BOOST,
+                    COLOR_HUD_INFO, COLOR_HUD_GEN, COLOR_HUD_KILLS)
 import config
 from math3d import _slerp_np, _q_rot_b
 import terrain
@@ -36,10 +37,11 @@ def init_hud_and_camera():
     Call only AFTER app = Ursina(...) exists."""
     global hawk_info, gen_text, kill_counter
     hawk_info = Text('1-3 AI cams  4/5 Player cams  WASD/QE/Shift/Ctrl fly  TAB cycle AI  ESC quit',
-                     origin=(0, 0), y=-0.45, size=0.035, color=color.rgba32(255, 255, 255, 120))
+                     origin=(0, 0), y=-0.45, size=0.035, color=color.rgba32(*COLOR_HUD_INFO))
     gen_text = Text('Gen: 1 | Time: 0.0s | Best Kills: 0', origin=(0, 0), y=-0.38, size=0.045,
-                    color=color.rgba32(255, 220, 120, 200))
-    kill_counter = Text('catches: 0', origin=(0, 0), x=-0.9, y=-0.45, size=0.05, color=color.red)
+                    color=color.rgba32(*COLOR_HUD_GEN))
+    kill_counter = Text('catches: 0', origin=(0, 0), x=-0.9, y=-0.45, size=0.05,
+                        color=color.rgba32(*COLOR_HUD_KILLS))
     camera.position = (0, 35, -45)
 
 def handle_input(key):

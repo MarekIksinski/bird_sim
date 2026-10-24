@@ -30,7 +30,7 @@ from config import (NUM_FOXES, NUM_PAIRS, FOXES_PER_PAIR, TERRAIN_SIZE,
                     FOX_SPRINT_FLEE_RADIUS, FOX_PROXIMITY_RADIUS,
                     FOX_STARVE_SECONDS, FOX_STALK_HUNGER_RELIEF,
                     FOX_MUTATION_SIGMA, FOX_HIDDEN_LAYERS,
-                    RABBIT_FLEE_SPEED)
+                    RABBIT_FLEE_SPEED, COLOR_FOX)
 import terrain
 
 _fox_rng = np.random.default_rng(4321)
@@ -313,7 +313,7 @@ class FoxVisuals(Entity):
         # rgba32, NOT rgb(): in this ursina build rgb() is 0..1-scale
         # (rgb = rgba alias) — rgb(215,85,25) stores a 215x color scale that
         # clamps to WHITE in the shader (probed: case1 white vs case2 rust).
-        self.color = color.rgba32(215, 85, 25)   # sleek rust-orange darts
+        self.color = color.rgba32(*COLOR_FOX)   # sleek rust-orange darts
         self.double_sided = True
         self.fox_shape = np.array([[0, 0, 0.85], [-0.28, 0, -0.45], [0.28, 0, -0.45]], dtype=np.float32)
 

@@ -17,7 +17,7 @@ from config import (NUM_BURROWS, NUM_RABBITS, RABBIT_FLEE_RADIUS,
                     FOX_STEALTH_FLEE_RADIUS,
                     FOX_STEALTH_FREEZE_RADIUS, FOX_SPRINT_FLEE_RADIUS,
                     FOX_CATCH_RADIUS, FOX_BOOST_SPEED, FOX_CRUISE_SPEED,
-                    FOX_STALK_FACTOR)
+                    FOX_STALK_FACTOR, COLOR_RABBIT)
 import predators
 import player
 import foxes
@@ -161,7 +161,7 @@ class RabbitVisuals(Entity):
         super().__init__()
         self.model = Mesh(vertices=[], triangles=[], colors=[], mode='triangle', static=False)
         self.texture = 'white_cube'
-        self.color = color.rgba32(140, 100, 70)   # small brown rabbits (rgba32: rgb() is 0..1-scale here)
+        self.color = color.rgba32(*COLOR_RABBIT)   # small brown rabbits (rgba32: rgb() is 0..1-scale here)
         self.double_sided = True
         self.rabbit_shape = np.array([[0, 0, 0.4], [-0.15, 0, -0.15], [0.15, 0, -0.15]], dtype=np.float32)
 

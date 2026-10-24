@@ -29,7 +29,8 @@ from config import (POPULATION_SIZE, NUM_BIRDS, MUTATION_TINY,
                     HAWK_GRAVITY, DIVE_MAX_SPEED, MIN_FLIGHT_SPEED,
                     STALL_SPEED, LIFT_GRIP, INDUCED_DRAG,
                     BOOST_DURATION, BOOST_RECHARGE, BOOST_COOLDOWN_RECOVER,
-                    HAWK_HIDDEN_LAYERS)
+                    HAWK_HIDDEN_LAYERS, COLOR_HAWK_GOLD, COLOR_HAWK_BRIGHT,
+                    COLOR_HAWK_MUTED)
 import terrain
 from math3d import _q_mul_b, _q_from_aa_b, _q_rot_b
 
@@ -723,14 +724,14 @@ def update_pack(pos_np, vel_np):
 # The hawk pack — the GLB models + rank colors (spawned by init_pack_visuals
 # AFTER Ursina() exists; update_pack_visuals rides them every frame).
 pack_entities = []
-GOLD = color.rgba32(255, 200, 40)
-MUTED = color.rgba32(150, 70, 50)
-BRIGHT = color.rgba32(230, 50, 40)
+GOLD = color.rgba32(*COLOR_HAWK_GOLD)
+MUTED = color.rgba32(*COLOR_HAWK_MUTED)
+BRIGHT = color.rgba32(*COLOR_HAWK_BRIGHT)
 
 def init_pack_visuals():
     """Spawn the hawk entities — call only AFTER app = Ursina(...) exists."""
     for i in range(POPULATION_SIZE):
-        e = Entity(model='assets/hawk.glb', color=color.rgba32(150, 70, 50))
+        e = Entity(model='assets/hawk.glb', color=color.rgba32(*COLOR_HAWK_MUTED))
         pack_entities.append(e)
 
 def update_pack_visuals():

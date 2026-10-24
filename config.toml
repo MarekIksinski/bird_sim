@@ -144,7 +144,26 @@ stealth_flee_radius = 7.5   # creeping fox (min stalk speed) only triggers Flee 
 stealth_freeze_radius = 22.0  # creeping fox triggers Freeze out to here
 sprint_flee_radius = 50.0   # sprinting fox triggers Flee out to here (= rabbit flee_radius)
 proximity_radius = 80.0     # NN sensor + proximity score radius
-starve_seconds = 45.0       # no catch for this long -> pair replaced (Moran)
+starve_seconds = 180.0       # no catch for this long -> pair replaced (Moran)
 stalk_hunger_relief = 0.4   # hunger timer slows to this while actively stalking
 mutation_sigma = 0.07       # gaussian noise on offspring pair weights
 hidden_layers = [24, 12]    # fox pair MLP: (12 sensors) -> 24 -> 12 -> (2 outputs)
+
+[colors]
+# Entity/mesh/HUD colors: "#rrggbb", "#rrggbbaa" or [r, g, b] / [r, g, b, a]
+# (0..255 per channel). Missing keys fall back to the built-in defaults below.
+starling    = "#00ffff"       # starling darts (FlockVisuals)
+rabbit      = [140, 100, 70]  # small brown rabbits
+fox         = "#d75519"       # rust-orange fox darts
+hawk_gold   = "#ffc828"       # pack rank 1 (top fitness)
+hawk_bright = "#e63228"       # pack rank 2
+hawk_muted  = "#964632"       # pack rank 3+ and spawn color
+player      = "#50dcff"       # spectator hawk (reads distinct from the AI reds)
+fog         = "#141e14"       # scene fog color
+tree_trunk  = "#5a3c28"
+tree_crown  = "#285a2d"
+bush        = "#3c6e32"
+rock        = "#646973"
+hud_info    = [255, 255, 255, 120]   # bottom control-hint line
+hud_gen     = [255, 220, 120, 200]   # gen/fitness line
+hud_kills   = "#ff0000"              # catch counter

@@ -21,7 +21,7 @@ from config import (NUM_BIRDS, NEIGHBOR_COUNT, SEPARATION_DIST, ROOST_RADIUS,
                     MAX_SPEED, MAX_FORCE, NUM_TRIBES, BIRDS_PER_TRIBE,
                     STARLING_MUTATION_SIGMA, TRIBE_REPLACE_DEATHS,
                     CASUALTY_DECAY, TERRAIN_SIZE, PANIC_RADIUS, FORCE_FLEE,
-                    PANIC_MAX_SPEED, GENERATION_SECONDS,
+                    PANIC_MAX_SPEED, GENERATION_SECONDS, COLOR_STARLING,
                     FLOCK_GRAVITY, MIN_BIRD_SPEED, DIVE_SPEED_MULT,
                     CLIMB_SPEED_MULT, STARLING_HIDDEN_LAYERS, MAX_ALTITUDE)
 import predators
@@ -453,7 +453,7 @@ class FlockVisuals(Entity):
         super().__init__()
         self.model = Mesh(vertices=[], triangles=[], colors=[], mode='triangle', static=False)
         self.texture = 'white_cube'
-        self.color = color.cyan
+        self.color = color.rgba32(*COLOR_STARLING)
         self.double_sided = True
         self.bird_shape = np.array([[0, 0, 0.6], [-0.3, 0, -0.3], [0.3, 0, -0.3]], dtype=np.float32)
 

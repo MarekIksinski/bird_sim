@@ -271,3 +271,43 @@ FOX_STARVE_SECONDS = float(_get('foxes', 'starve_seconds', 45.0))
 FOX_STALK_HUNGER_RELIEF = float(_get('foxes', 'stalk_hunger_relief', 0.4))
 FOX_MUTATION_SIGMA = float(_get('foxes', 'mutation_sigma', 0.07))
 FOX_HIDDEN_LAYERS = _hidden_layers('foxes', 'hidden_layers', [24, 12])
+
+# --- 1e. COLORS ([colors] section; 0..255 per channel, a defaults to 255) ---
+# Values are plain tuples (r,g,b,a) 0..255 so config.py stays Ursina-free;
+# consumers convert with color.rgba32(*COLOR_X). Accepts "#rrggbb",
+# "#rrggbbaa", [r,g,b] or [r,g,b,a]. NEVER color.rgb(): in this ursina
+# build rgb() is 0..1-scale and 0..255 values clamp to WHITE.
+def _color(section, key, default):
+    v = _get(section, key, default)
+    if isinstance(v, str):
+        s = v.strip().lstrip('#')
+        if len(s) not in (6, 8) or any(c not in '0123456789abcdefABCDEF' for c in s):
+            print(f"[config] [colors] {key}={v!r} is not #rrggbb/#rrggbbaa; using default")
+            v = default
+        else:
+            v = [int(s[i:i + 2], 16) for i in range(0, len(s), 2)]
+    try:
+        vals = [max(0, min(255, int(c))) for c in v]
+        assert len(vals) in (3, 4)
+    except (TypeError, ValueError, AssertionError):
+        print(f"[config] [colors] {key}={v!r} is not [r,g,b(,a)] 0..255; using default")
+        vals = list(default)
+    if len(vals) == 3:
+        vals.append(255)
+    return tuple(vals)
+
+COLOR_STARLING   = _color('colors', 'starling',   (0, 255, 255))
+COLOR_RABBIT     = _color('colors', 'rabbit',     (140, 100, 70))
+COLOR_FOX        = _color('colors', 'fox',        (215, 85, 25))
+COLOR_HAWK_GOLD  = _color('colors', 'hawk_gold',  (255, 200, 40))    # pack rank 1
+COLOR_HAWK_BRIGHT = _color('colors', 'hawk_bright', (230, 50, 40))   # pack rank 2
+COLOR_HAWK_MUTED = _color('colors', 'hawk_muted', (150, 70, 50))     # pack rank 3+ / spawn
+COLOR_PLAYER     = _color('colors', 'player',     (80, 220, 255))    # spectator hawk
+COLOR_FOG        = _color('colors', 'fog',        (20, 30, 20))
+COLOR_TREE_TRUNK = _color('colors', 'tree_trunk', (90, 60, 40))
+COLOR_TREE_CROWN = _color('colors', 'tree_crown', (40, 90, 45))
+COLOR_BUSH       = _color('colors', 'bush',       (60, 110, 50))
+COLOR_ROCK       = _color('colors', 'rock',       (100, 105, 115))
+COLOR_HUD_INFO   = _color('colors', 'hud_info',   (255, 255, 255, 120))
+COLOR_HUD_GEN    = _color('colors', 'hud_gen',    (255, 220, 120, 200))
+COLOR_HUD_KILLS  = _color('colors', 'hud_kills',  (255, 0, 0))

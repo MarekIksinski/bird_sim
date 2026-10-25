@@ -52,8 +52,38 @@ for i in (1, 2, 3):
 order = np.argsort(-np.array([5, 9, 7, 1, 2, 3, 0, 4, 6, 8]))
 assert list(order[:4]) == [1, 9, 2, 8]
 assert np.array_equal(predators.population[4], pop[9]), "tier2 parent must skip crowned slot 1"
-assert np.array_equal(predators.population[7], pop[2]), "tier3 parent must be next challenger"
+# LINEAGE DIVERSITY rule: tier parents come from OUTSIDE Tier 1 (slots 4-9)
+# when they scored positive fitness -> slot 8 (fitness 6), NOT slot 2 (Tier-1 clone).
+assert np.array_equal(predators.population[7], pop[8]), "tier3 parent must come from slots 4-9 (diversity rule)"
 print("T1 OK: crowning + non-duplicate tier parents (skipped crowned index)")
+
+# --- 1b. lineage diversity + immigrant slot + weight hygiene ---------------
+pop1b = base_pop(43)
+reset(pop1b)
+# Tier-1 clones (slots 1-3) DOMINATE the ranking; positive outsiders exist at 4-9.
+predators.fitness[:] = np.array([1, 12, 11, 10, 5, 4, 0, 0, 3, 2])
+predators.gen_kills[:] = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0]   # nonzero kills -> crossover path
+predators.evolve_generation()
+# crowned slot 1; tier parents must be slots 4 and 5 (outside Tier 1), NOT 12/11/10 clones
+assert np.array_equal(predators.population[4], pop1b[4]), "tier2 must prefer outside-Tier1 positive performer"
+assert np.array_equal(predators.population[7], pop1b[5]), "tier3 must prefer outside-Tier1 positive performer"
+# slot 9 immigrant: crossover of King x tier2 parent + heavy noise (not a tier3 clone)
+assert not np.array_equal(predators.population[9], pop1b[5]), "slot9 must not be a tier3 offspring"
+d9 = predators.population[9] - (0.5 * pop1b[1] + 0.5 * pop1b[4])
+assert abs(d9.std() - config.MUTATION_HEAVY) < 0.05, "slot9 = 50/50 crossover + heavy mutation"
+# weight hygiene: every mutated slot inside the clip band
+assert np.abs(predators.population).max() <= predators.WEIGHT_CLIP + 1e-9
+# zero-kill generation -> slot 9 is a fully fresh random genome
+pop1c = base_pop(44)
+reset(pop1c)   # reset zeroes gen_kills
+predators.fitness[:] = np.array([3, 2, 1, 0, 5, 4, 0, 0, 0, 0])
+predators.evolve_generation()
+d9c = predators.population[9]
+assert 0.3 < d9c.std() < 0.7, f"zero-kill gen: slot9 must be fresh N(0,0.5), std={d9c.std():.3f}"
+# restore the T1 King state so the retention tests below start clean
+predators.hof_genome = pop[1].copy()
+predators.hof_fitness = 9.0
+print("T1b OK: diversity parents, immigrant slot (crossover + fresh fallback), weight clip on mutation")
 
 # --- 2. retention + EMA + challenger promotion -------------------------------
 # King (in slot 0 now) flies badly (fitness 1); best challenger scores 5.
@@ -151,6 +181,18 @@ assert predators.hof_genome is not None and predators.hof_fitness == 0.0
 assert np.array_equal(predators.hof_genome, predators.population[0]), \
     "old ckpt: slot0 must become incumbent King"
 print("T6 OK: checkpoint round-trip + backward-compatible HoF init")
+
+# saturated checkpoint recovery: a checkpoint with |W| far outside the
+# clip band must load BACK inside it (resumed runs recover sensitivity)
+np.savez(os.path.join(TMP, 'population.npz'),
+         population=base_pop(45) * 10.0, generation=7, total_catches=0,
+         hof_genome=base_pop(46)[0] * 10.0, hof_fitness=1.0)
+predators.hof_genome = None; predators.hof_fitness = -1e9
+predators.load_checkpoint()
+assert predators.generation == 7
+assert np.abs(predators.population).max() <= predators.WEIGHT_CLIP + 1e-9, "loaded pop must be clipped"
+assert np.abs(predators.hof_genome).max() <= predators.WEIGHT_CLIP + 1e-9, "loaded King must be clipped"
+print("T7 OK: saturated checkpoint loads back clipped into tanh's linear region")
 
 import shutil
 shutil.rmtree(TMP, ignore_errors=True)

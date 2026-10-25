@@ -366,8 +366,12 @@ def _pair_starve_check():
         pool = np.array([int(np.argmax(rate))])   # all starving: best of a bad lot
     parent = int(pool[np.argmax(rate[pool])])
 
-    child = pair_pop[parent] + _fox_rng.normal(
-        0.0, FOX_MUTATION_SIGMA, size=FOX_GENOME_LEN).astype(np.float32)
+    # weight decay (0.985) + clip [-3.5, 3.5]: keeps the mutation random
+    # walk mean-reverting so tanh never saturates (see predators.WEIGHT_DECAY)
+    child = np.clip(
+        pair_pop[parent] * 0.985 + _fox_rng.normal(
+            0.0, FOX_MUTATION_SIGMA, size=FOX_GENOME_LEN),
+        -3.5, 3.5, dtype=np.float32)
     pair_pop[P] = child
     pair_score[P] = 0.0
     pair_survival_time[P] = 0.0

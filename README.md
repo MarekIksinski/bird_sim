@@ -51,11 +51,25 @@ NumPy when VRAM is tight).
   velocity lags behind the nose (speed-modulated lift bite), so high-speed
   dives carve sweeping arcs, and sharp high-AoA turns bleed airspeed via
   induced drag.
-  True 6-DOF quaternion flight, arena/ceiling deflection, dense shaped
-  fitness (proximity ramp + dogfight alignment bonus + catches, minus
-  ground/wall/ceiling scrapes). Between generations, a **3-tiered
-  speciation** scheme breeds the top 3: champion lineage with tiny mutation
-  (exploitation), runner-up with medium, wildcard with heavy (exploration).
+  True 6-DOF quaternion flight, arena/ceiling deflection, plus a terrain
+  **pull-up reflex** (a hawk under 8m ground clearance with a nose-down
+  attitude gets its nose rotated up at a ground-proximity rate — no
+  nose-dive ground-lock). Dense shaped fitness is **dt-scaled**
+  (framerate-independent) and **aim-gated**: the proximity ramp only pays
+  while the nose points at the nearest bird, dogfight inside 25m scales
+  with closing speed, and holding near-max yaw rate without closing on a
+  bird costs a spin-lock penalty — passive circling can no longer out-score
+  attacking. Between generations, a **3-tiered speciation** scheme breeds
+  the King of the Hill (Hall of Fame) with tiny mutation (exploitation),
+  plus two challenger lineages at medium/heavy mutation — Tier-2/3 parents
+  are picked from OUTSIDE the King's Tier-1 slots when possible (lineage
+  diversity), and slot 9 is an **immigrant wildcard** (50/50 King x
+  runner-up crossover + heavy mutation, or a fully fresh genome whenever a
+  generation scored zero kills). All mutation offspring get **L2 weight
+  decay (0.985) + a [-3.5, 3.5] clip** so tanh never saturates from random-
+  walk weight drift; saturated checkpoints load back clipped into tanh's
+  linear region. Hawks respawn at hunting altitude (terrain+35m, never
+  more than 15m below the roost) instead of skimming the deck.
 - **Rabbit prey layer** — 400 rabbits on a pure-NumPy 4-state machine
   (Forage / Vigilance / Freeze / Flee) that react to the nearest hawk and
   sprint to invisible burrows (45 of them), diving underground when cornered.
@@ -204,6 +218,11 @@ main.py       entrypoint orchestrator (init order + global input/update)
   modules, steps Ursina frames, and checks evolution, checkpoints (incl.
   the starling round-trip), cameras and rabbits end to end.
   Run: `DISPLAY=:0 .venv/bin/python tools/verify_refactor.py`
+- `tools/verify_hof.py` — King-of-the-Hill speciation gate: crowning/EMA,
+  lineage-diverse Tier-2/3 parents (outside Tier 1), slot-9 immigrant
+  (crossover + zero-kill fresh fallback), weight-decay clip on mutation
+  and saturated-checkpoint recovery on load.
+  Run: `.venv/bin/python tools/verify_hof.py`
 - `tools/verify_player.py` — offscreen harness for the spectator hawk:
   spawn, straight flight, pitch/roll signs, throttle, wall/ceiling/ground
   clamps, dt-spike guard, camera modes 1-5, respawn, and render-truth

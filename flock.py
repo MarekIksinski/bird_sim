@@ -133,8 +133,10 @@ def _tribe_respawn_check(caught_idx):
         if pool:
             parent = int(_starling_rng.choice(pool))
             parents.append((int(T), parent))
-            tribe_pop[T] = tribe_pop[parent] + _starling_rng.normal(
-                0.0, STARLING_MUTATION_SIGMA, size=STARLING_GENOME_LEN)
+            tribe_pop[T] = np.clip(
+                tribe_pop[parent] * 0.985 + _starling_rng.normal(
+                    0.0, STARLING_MUTATION_SIGMA, size=STARLING_GENOME_LEN),
+                -3.5, 3.5, dtype=np.float32)
         else:                               # every tribe dead -> fresh random
             parents.append((int(T), -1))
             tribe_pop[T] = _starling_rng.normal(0.0, 0.5, size=STARLING_GENOME_LEN)

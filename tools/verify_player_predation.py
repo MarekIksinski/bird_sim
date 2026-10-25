@@ -145,6 +145,16 @@ rabbits.rabbit_pos[0, 1] = terrain.height_at(0.0, 0.0)
 rabbits.rabbit_vel[:] = 0.0
 rabbits.rabbit_state[:] = 0          # Forage
 rabbits.rabbit_timer[:] = 10.0
+# park the ground predators far from BOTH the probe rabbit (0,0) and the
+# rabbit crowd (900,900): foxes/wolves postdate this harness and rabbits
+# now fold their proximity into the threat distance d — an unparked fox
+# near the probe fakes "Flee from the player" and near the crowd breaks
+# the only-one-fleeing assert.
+import foxes as _foxes_mod, wolves as _wolves_mod
+_foxes_mod.fox_pos[:] = np.array([500.0, 0.0, -500.0], dtype=np.float32)
+_wolves_mod.wolf_pos[:] = np.array([-500.0, 0.0, 500.0], dtype=np.float32)
+_foxes_mod.fox_speed[:] = 0.0        # creeping: minimal stealth rescale
+_wolves_mod.wolf_speed[:] = 0.0
 
 player.player_pos[:] = np.array([FR * 0.5, float(rabbits.rabbit_pos[0, 1]) + 2.0, 0.0],
                                 dtype=np.float32)

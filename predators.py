@@ -73,7 +73,13 @@ def respawn_pack():
     rc = to_cpu(flock.roost_center)
     pack_pos[:, 0] = px
     pack_pos[:, 2] = pz
-    pack_pos[:, 1] = terrain.height_at(px, pz) + 3.0
+    # SPAWN ALTITUDE: cruising hunting elevation, NOT skim-height. Spawning
+    # at ground+3.0 sat BELOW the ground_clearance penalty line (3.2m):
+    # every hawk was penalized from frame 1 and learned to climb through
+    # hills into the roost (65m). Spawn instead at terrain+35m, but never
+    # more than 15m below the roost so the approach stays a level hunt.
+    pack_pos[:, 1] = np.maximum(terrain.height_at(px, pz) + 35.0,
+                                rc[1] - 15.0)
     pack_speed[:] = CRUISE_SPEED   # airborne from the drop
     # yaw to face the roost center (world-up rotation, 45deg default style)
     yaw = np.degrees(np.arctan2(rc[0] - px, rc[2] - pz))
@@ -100,6 +106,23 @@ GENOME_LEN = sum(NET_SHAPE[i] * NET_SHAPE[i+1] + NET_SHAPE[i+1] for i in range(l
 OBS_VEL_SCALE = PANIC_MAX_SPEED
 
 population = pack_rng.normal(0.0, 0.5, size=(POPULATION_SIZE, GENOME_LEN))
+# --- mutation hygiene: L2 shrinkage + soft weight clamp -------------------
+# Gaussian noise added every generation is a random walk: |W| drifts past
+# ~5 and tanh saturates at +-1, so the hawk stops SEEING its sensors and
+# locks into a constant turn/pitch (endless circles, ground hits). Shrinking
+# parents by WEIGHT_DECAY before mutating keeps the noise random walk
+# mean-reverting (steady-state |W| ~ sigma/sqrt(2*(1-decay))), and the
+# [-WEIGHT_CLIP, WEIGHT_CLIP] clip guarantees every weight stays inside
+# tanh's responsive region regardless of history.
+WEIGHT_DECAY = 0.985
+WEIGHT_CLIP = 3.5
+# spin-lock fitness penalty per 60fps-frame while holding near-max yaw rate
+# without closing on a bird (see update_pack); stays far below the max
+# per-frame hunting bonus so only TRUE circling is punished.
+SPIN_PENALTY = 1.5
+# last frame's NN outputs (N,4) stashed by update_predators — the spin-lock
+# penalty in update_pack reads out[:,0] (yaw rate) from here.
+_last_nn_out = np.zeros((POPULATION_SIZE, 4))
 fitness = np.zeros(POPULATION_SIZE)
 gen_kills = np.zeros(POPULATION_SIZE, dtype=np.int32)
 total_catches = 0
@@ -165,7 +188,11 @@ def _load_checkpoint_state():
             print(f"[persist] checkpoint shape {pop.shape} != config "
                   f"({POPULATION_SIZE},{GENOME_LEN}); starting fresh")
             return
-        population = pop.astype(np.float64)
+        population = np.clip(pop.astype(np.float64), -WEIGHT_CLIP, WEIGHT_CLIP)
+        # A saturated checkpoint is a SAVED blindness: clamp the incumbent
+        # King too so a resumed run recovers tanh sensitivity immediately.
+        # (Loaded genomes outside the clip band are re-saved clipped at the
+        # next checkpoint — a one-time recovery, not a silent re-tune.)
         generation = int(d['generation'])
         total_catches = int(d['total_catches'])
         # King of the Hill state (backward compatible: old checkpoints
@@ -173,7 +200,8 @@ def _load_checkpoint_state():
         # incumbent King so Tier 1 keeps the evolved champion).
         if 'hof_genome' in d.files and 'hof_fitness' in d.files \
                 and d['hof_genome'].shape == (GENOME_LEN,):
-            hof_genome = d['hof_genome'].astype(np.float64)
+            hof_genome = np.clip(d['hof_genome'].astype(np.float64),
+                                 -WEIGHT_CLIP, WEIGHT_CLIP)
             hof_fitness = float(d['hof_fitness'])
         else:
             hof_genome = population[0].copy()
@@ -192,7 +220,8 @@ def _load_checkpoint_state():
                 print(f"[persist] starling checkpoint shape {tp.shape} != config "
                       f"({flock.NUM_TRIBES},{flock.STARLING_GENOME_LEN}); tribes start fresh")
             else:
-                flock.tribe_pop = tp.astype(np.float32)
+                flock.tribe_pop = np.clip(tp.astype(np.float32),
+                                          -WEIGHT_CLIP, WEIGHT_CLIP)
                 flock.starling_evolutions = int(s['starling_evolutions'])
                 print(f"[persist] {flock.starling_evolutions} starling tribe evolutions resumed")
         except Exception as e:
@@ -207,7 +236,8 @@ def _load_checkpoint_state():
                 print(f"[persist] fox checkpoint shape {pp.shape} != config "
                       f"({foxes.NUM_PAIRS},{foxes.FOX_GENOME_LEN}); pairs start fresh")
             else:
-                foxes.pair_pop = pp.astype(np.float32)
+                foxes.pair_pop = np.clip(pp.astype(np.float32),
+                                         -WEIGHT_CLIP, WEIGHT_CLIP)
                 foxes.fox_evolutions = int(s['fox_evolutions'])
                 foxes.fox_total_catches = int(s['fox_total_catches'])
                 print(f"[persist] {foxes.fox_evolutions} fox pair evolutions resumed")
@@ -223,7 +253,8 @@ def _load_checkpoint_state():
                 print(f"[persist] wolf checkpoint shape {pp.shape} != config "
                       f"({wolves.NUM_WOLF_PAIRS},{wolves.WOLF_GENOME_LEN}); pairs start fresh")
             else:
-                wolves.pair_pop = pp.astype(np.float32)
+                wolves.pair_pop = np.clip(pp.astype(np.float32),
+                                          -WEIGHT_CLIP, WEIGHT_CLIP)
                 wolves.wolf_evolutions = int(s['wolf_evolutions'])
                 wolves.wolf_fox_catches = int(s['wolf_fox_catches'])
                 wolves.wolf_rabbit_catches = int(s['wolf_rabbit_catches'])
@@ -390,6 +421,8 @@ def update_predators(layers, pos_np, vel_np):
     for W, b in layers:
         a = np.tanh(np.einsum('ni,nio->no', a, W) + b)
     out = a
+    global _last_nn_out
+    _last_nn_out = out   # stash for the spin-lock penalty in update_pack
     # --- TRUE 6-DOF attitude: yaw/pitch/roll about the hawk's OWN axes.
     # Deltas are built from BODY-frame axes (fixed unit vectors) and RIGHT-
     # multiply the attitude: q_new = q * dq_yaw * dq_pitch * dq_roll. That is
@@ -457,6 +490,28 @@ def update_predators(layers, pos_np, vel_np):
                          np.minimum(np.degrees(np.arcsin(nose_up)) * 2.0, 60.0),
                          0.0) * adt              # deg/s rate, capped
     pack_q = _q_mul_b(_q_from_aa_b(ceil_axis, ceil_turn), pack_q)
+    pack_q /= np.linalg.norm(pack_q, axis=1, keepdims=True)
+    # --- TERRAIN PULL-UP REFLEX (mirrors the ceiling pitch-down reflex):
+    # a hawk close to the ground with its nose pitched down gets the nose
+    # gently rotated toward straight UP via the same minimum-rotation
+    # construction, at a rate proportional to how close the ground is.
+    # Without it, a saturated or unlucky genome can nose-dive into a
+    # ground-lock: the +0.4 hard floor pins it at the mesh while the nose
+    # keeps pitching down. 8m trigger sits well above the 3.2m scrape line
+    # so the reflex fires long before a scrape.
+    f, r, u = pack_axes()
+    ground_clear = pack_pos[:, 1] - terrain.height_at(pack_pos[:, 0], pack_pos[:, 2])
+    near_ground = (ground_clear < 8.0) & (f[:, 1] < 0.2)
+    up_vec = np.zeros((POPULATION_SIZE, 3)); up_vec[:, 1] = 1.0
+    pull_axis = np.cross(f, up_vec)
+    # cross() vanishes with the nose pointing straight up — fall back to the
+    # hawk's own right wing axis (a pitch-over in body frame).
+    pull_degen = np.linalg.norm(pull_axis, axis=1) < 1e-6
+    pull_axis[pull_degen] = r[pull_degen]
+    # depth: 0 at the 8m trigger line, 1 at the deck
+    pull_depth = np.clip((8.0 - ground_clear) / 8.0, 0.0, 1.0)
+    pull_turn = np.where(near_ground, pull_depth * 90.0, 0.0) * adt   # deg/s rate
+    pack_q = _q_mul_b(_q_from_aa_b(pull_axis, pull_turn), pack_q)
     pack_q /= np.linalg.norm(pack_q, axis=1, keepdims=True)
     # --- STALL RECOVERY: wings lose lift below STALL_SPEED while the nose
     # is pitched up, so gravity pulls the nose back down toward the horizon
@@ -628,10 +683,17 @@ def evolve_generation():
     new_pop = np.empty_like(population)
     # --- Tier 1: King lineage (exploitation) — the all-time best genome
     # always flies untouched in Slot 0; slots 1-3 are tiny-mutation clones.
+    # MUTATION DECAY + CLAMP: shrink the parent slightly (L2 pull toward 0,
+    # 0.985) before adding Gaussian noise, then clip to [-3.5, 3.5]. Without
+    # this, noise accumulates as a random walk and |W| drifts past ~5,
+    # saturating every tanh at +-1: the hawk goes BLIND to its sensors and
+    # locks into a constant turn/pitch rate (endless circles / ground hits).
     new_pop[0] = hof_genome.copy()
     for i in (1, 2, 3):
-        new_pop[i] = hof_genome + pack_rng.normal(
-            0.0, MUTATION_TINY, size=GENOME_LEN)
+        new_pop[i] = np.clip(
+            hof_genome * WEIGHT_DECAY + pack_rng.normal(
+                0.0, MUTATION_TINY, size=GENOME_LEN),
+            -WEIGHT_CLIP, WEIGHT_CLIP)
     # --- Tier 2/3 parents: top challengers, never the King's own genome.
     # If order[0] was just crowned (or IS the King in slot 0), its genome
     # is already in new_pop[0] — skip that slot so the same genome isn't
@@ -639,18 +701,49 @@ def evolve_generation():
     # while a different hawk won the generation, that challenger still
     # gets to breed: promote order[0]/order[1] past slot 0.
     king_slot = 0 if not crowned else int(order[0])
-    challengers = [int(i) for i in order if int(i) != king_slot][:2]
+    # LINEAGE DIVERSITY: prefer challengers from OUTSIDE Tier 1 (slots 0-3,
+    # the King + its tiny-mutation clones). If slots 1-3 can breed Tiers 2/3,
+    # one generation overwrites the whole population with a single lineage
+    # and exploration dies. Only fall back to Tier-1 slots when NO outside
+    # slot scored positive fitness (nothing else worth breeding).
+    challengers = [int(i) for i in order
+                   if int(i) != king_slot and int(i) >= 4 and fitness[int(i)] > 0.0][:2]
+    if len(challengers) < 2:
+        for i in order:
+            s = int(i)
+            if s != king_slot and s not in challengers:
+                challengers.append(s)
+                if len(challengers) == 2:
+                    break
     tier2_parent, tier3_parent = challengers[0], challengers[1]
     # --- Tier 2: runner-up lineage (medium exploration) ---
     new_pop[4] = population[tier2_parent]                   # untouched runner-up
     for i in (5, 6):
-        new_pop[i] = population[tier2_parent] + pack_rng.normal(
-            0.0, MUTATION_MEDIUM, size=GENOME_LEN)
+        new_pop[i] = np.clip(
+            population[tier2_parent] * WEIGHT_DECAY + pack_rng.normal(
+                0.0, MUTATION_MEDIUM, size=GENOME_LEN),
+            -WEIGHT_CLIP, WEIGHT_CLIP)
     # --- Tier 3: wildcard lineage (heavy exploration) ---
     new_pop[7] = population[tier3_parent]                   # untouched wildcard
-    for i in (8, 9):
-        new_pop[i] = population[tier3_parent] + pack_rng.normal(
-            0.0, MUTATION_HEAVY, size=GENOME_LEN)
+    for i in (8,):
+        new_pop[i] = np.clip(
+            population[tier3_parent] * WEIGHT_DECAY + pack_rng.normal(
+                0.0, MUTATION_HEAVY, size=GENOME_LEN),
+            -WEIGHT_CLIP, WEIGHT_CLIP)
+    # --- Slot 9: Immigrant / crossover wildcard (lineage diversity) ---
+    # A fresh blood genome every generation so the pack can never converge
+    # into a single lineage or get permanently stuck in a zero-kill local
+    # optimum. Normally a 50/50 crossover of King x Tier-2 parent plus
+    # heavy mutation; when the whole generation scored ZERO kills the pack
+    # is stuck, so slot 9 becomes a fully fresh random genome instead.
+    if hof_genome is not None and gen_kills.sum() > 0:
+        new_pop[9] = np.clip(
+            0.5 * hof_genome + 0.5 * population[tier2_parent]
+            + pack_rng.normal(0.0, MUTATION_HEAVY, size=GENOME_LEN),
+            -WEIGHT_CLIP, WEIGHT_CLIP)
+    else:
+        new_pop[9] = np.clip(pack_rng.normal(0.0, 0.5, size=GENOME_LEN),
+                             -WEIGHT_CLIP, WEIGHT_CLIP)
     population = new_pop
     fitness[:] = 0.0
     gen_kills[:] = 0
@@ -722,24 +815,55 @@ def update_pack(pos_np, vel_np):
         np.add.at(fitness, cb[ai_mask], FITNESS_CATCH)
         total_catches += int(ai_mask.sum())
         player.player_catches += int((~ai_mask).sum())
-    # --- per-frame fitness: catches + proximity ramp + dogfighting bonus
-    #     - ground/wall/ceiling scrape penalties ---
-    fitness += PROXIMITY_GAIN * np.clip(1.0 - hawk_dmin / PROXIMITY_RADIUS, 0.0, 1.0)
+    # --- per-frame fitness: catches + aim-gated proximity ramp + dogfight
+    #     bonus - ground/wall/ce scrape penalties - spin-lock penalty.
+    # DT_SCALE: every per-frame term is scaled to a 60 FPS frame basis
+    # (same capped formula as the boids step), so fitness is framerate-
+    # independent and a laggy run cannot inflate or starve a generation.
+    dt_scale = min(max(time.dt, 0.0), 0.05) * 60.0
+    direction, dist, _nv, _np_ = _nearest_bird_np(pos_np, vel_np)
+    f, r, u = pack_axes()
+    aim = np.einsum('ij,ij->i', f, direction)          # 1 = nose on target
+    # proximity ramp, AIM-GATED: a hawk only earns the wide-range bonus
+    # while its nose actually points at the nearest bird. A passive 60m
+    # orbit (nose tangential, aim~0) used to bank PROXIMITY_GAIN*0.6 per
+    # frame — 4,000+ fitness per generation for never attacking. The
+    # residual loiter term (x0.35, distance-scaled, still aim-gated) keeps
+    # a small gradient for hawks that are near but not yet locked on.
+    prox_base = np.clip(1.0 - hawk_dmin / PROXIMITY_RADIUS, 0.0, 1.0)
+    loiter_term = (PROXIMITY_GAIN * 0.35 * prox_base
+                   * np.clip(aim, 0.0, 1.0) * dt_scale)
+    closing = np.clip(aim, 0.0, 1.0) * prox_base       # nose pointed inward
+    fitness += (loiter_term
+                + (PROXIMITY_GAIN - PROXIMITY_GAIN * 0.35) * closing * dt_scale)
     # dogfighting: inside DOGFIGHT_RADIUS, reward closing AND aiming:
     # (range term) x (alignment of nose with the target). Tail-chasers earn a
     # much higher baseline than hawks loitering at 80m, smoothing the
     # catch-lottery boom/bust (catches still worth FITNESS_CATCH).
-    direction, dist, _nv, _np_ = _nearest_bird_np(pos_np, vel_np)
-    f, r, u = pack_axes()
-    aim = np.einsum('ij,ij->i', f, direction)          # 1 = nose on target
+    # CLOSING-VELOCITY BOOST: a fast nose-on pass through the flock earns
+    # up to +80% extra, so an aggressive attack run always out-scores the
+    # best possible distant orbit.
     range_term = np.clip(1.0 - hawk_dmin / DOGFIGHT_RADIUS, 0.0, 1.0)
-    fitness += DOGFIGHT_GAIN * range_term * range_term * np.clip(aim, 0.0, 1.0)
+    closing_speed = 0.75 + 0.25 * np.clip(pack_speed / max(PRED_BOOST, 1e-6), 0.0, 1.0)
+    closing_boost = np.where(aim > 0.3, 1.0 + 0.8 * closing_speed, 1.0)
+    fitness += (DOGFIGHT_GAIN * range_term * range_term
+                * np.clip(aim, 0.0, 1.0) * closing_boost * dt_scale)
+    # --- SPIN-LOCK PENALTY: a hawk holding near-maximum yaw rate (out[:,0]
+    # saturated at +-1 -> |out| > 0.85) while NOT closing on a bird is
+    # circling, not hunting. A small continuous penalty makes endless
+    # orbits strictly fitness-negative. Gated to hawks inside the
+    # proximity radius (where circling was the exploit); a hawk far from
+    # any prey earns no bonus, so penalizing it would just add noise.
+    # (The NN output lives in update_predators; stash it per frame here.)
+    spin_lock = ((np.abs(_last_nn_out[:, 0]) > 0.85) & (aim < 0.3)
+                 & (hawk_dmin < PROXIMITY_RADIUS))
+    fitness -= SPIN_PENALTY * spin_lock * dt_scale
     clearance = pack_pos[:, 1] - terrain.height_at(pack_pos[:, 0], pack_pos[:, 2])
-    fitness -= (clearance < GROUND_CLEARANCE) * GROUND_PENALTY
+    fitness -= (clearance < GROUND_CLEARANCE) * GROUND_PENALTY * dt_scale
     half = TERRAIN_SIZE / 2 - 1.0
     edge = np.minimum(half - np.abs(pack_pos[:, 0]), half - np.abs(pack_pos[:, 2]))
-    fitness -= (edge < BOUNDARY_SCRAPE) * BOUNDARY_PENALTY
-    fitness -= (pack_pos[:, 1] > MAX_ALTITUDE - 1.0) * BOUNDARY_PENALTY
+    fitness -= (edge < BOUNDARY_SCRAPE) * BOUNDARY_PENALTY * dt_scale
+    fitness -= (pack_pos[:, 1] > MAX_ALTITUDE - 1.0) * BOUNDARY_PENALTY * dt_scale
     best_idx = int(np.argmax(fitness))
     # stash for the boids step (applied there AFTER its own clamp chain).
     # nearest_dir/nearest_d are per-bird (NUM_BIRDS): dir points AWAY from

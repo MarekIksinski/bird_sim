@@ -344,9 +344,18 @@ COLOR_DUST       = _color('colors', 'dust',       (200, 176, 144, 150))
 
 # --- 1f. VISUALS ([visuals]: triplanar terrain + sun shadows + sprint dust) ---
 TRIPLANAR_TOP_TEXTURE = str(_get('visuals', 'triplanar_top_texture', 'grass'))
-TRIPLANAR_SIDE_TEXTURE = str(_get('visuals', 'triplanar_side_texture', 'brick'))
+TRIPLANAR_SIDE_TEXTURE = str(_get('visuals', 'triplanar_side_texture', 'rock_procedural'))
 TRIPLANAR_TEXTURE_SCALE = float(_get('visuals', 'triplanar_texture_scale', 0.05))
-TRIPLANAR_SIDE_TEXTURE_SCALE = float(_get('visuals', 'triplanar_side_texture_scale', 0.05))
+# side scale accepts one float or an [x, y] pair (non-uniform tiling)
+_ss = _get('visuals', 'triplanar_side_texture_scale', 0.02)
+if isinstance(_ss, (list, tuple)):
+    TRIPLANAR_SIDE_TEXTURE_SCALE_X = float(_ss[0])
+    TRIPLANAR_SIDE_TEXTURE_SCALE_Y = float(_ss[1])
+else:
+    TRIPLANAR_SIDE_TEXTURE_SCALE_X = TRIPLANAR_SIDE_TEXTURE_SCALE_Y = float(_ss)
+TRIPLANAR_BLEND_ZONE = float(_get('visuals', 'triplanar_blend_zone', 0.5))
+TRIPLANAR_GRASS_BLEND_START = float(_get('visuals', 'triplanar_grass_blend_start', 0.25))
+TRIPLANAR_GRASS_BLEND_END = float(_get('visuals', 'triplanar_grass_blend_end', 0.75))
 SHADOW_MAP_SIZE = int(_get('visuals', 'shadow_map_size', 2048))
 SHADOW_BIAS = float(_get('visuals', 'shadow_bias', 0.005))
 SPRINT_DUST_FACTOR = float(_get('visuals', 'sprint_dust_factor', 1.5))

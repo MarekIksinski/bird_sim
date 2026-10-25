@@ -57,10 +57,22 @@ assert 'cast_shadows' in frag and 'fog_start' in frag
 si = t._shader_inputs
 assert abs(si['texture_scale'][0] - config.TRIPLANAR_TEXTURE_SCALE) < 1e-9 and \
        abs(si['texture_scale'][1] - config.TRIPLANAR_TEXTURE_SCALE) < 1e-9, si['texture_scale']
-assert abs(si['side_texture_scale'][0] - config.TRIPLANAR_SIDE_TEXTURE_SCALE) < 1e-9 and \
-       abs(si['side_texture_scale'][1] - config.TRIPLANAR_SIDE_TEXTURE_SCALE) < 1e-9
-assert 'side_texture' in si
-print('STEP1 triplanar OK: shader patched, scales', tuple(si['texture_scale']))
+assert si.get('side_texture') is not None
+# natural rock actually loaded (not white_cube fallback, not brick)
+assert config.TRIPLANAR_SIDE_TEXTURE in str(si['side_texture']), si['side_texture']
+assert 'brick' not in str(si['side_texture']) and 'white_cube' not in str(si['side_texture'])
+assert abs(si['side_texture_scale'][0] - config.TRIPLANAR_SIDE_TEXTURE_SCALE_X) < 1e-9 and \
+       abs(si['side_texture_scale'][1] - config.TRIPLANAR_SIDE_TEXTURE_SCALE_Y) < 1e-9, si['side_texture_scale']
+# soft blend uniforms wired from config
+assert abs(si['blend_zone'] - config.TRIPLANAR_BLEND_ZONE) < 1e-9
+assert abs(si['grass_blend_start'] - config.TRIPLANAR_GRASS_BLEND_START) < 1e-9 and \
+       abs(si['grass_blend_end'] - config.TRIPLANAR_GRASS_BLEND_END) < 1e-9
+# the hard stock cut must be gone; the smoothstep cross-fade must be in
+assert 'if (world_normal.y > .0)' not in frag
+assert 'smoothstep(grass_blend_start' in frag
+print('STEP1 triplanar OK: shader patched, top scale', tuple(si['texture_scale']),
+      'side scale', tuple(si['side_texture_scale']),
+      'blend', si['blend_zone'], si['grass_blend_start'], si['grass_blend_end'])
 
 # --- STEP2: shadows + lit entities ---
 assert sun._light.is_shadow_caster(), 'sun is not a shadow caster'

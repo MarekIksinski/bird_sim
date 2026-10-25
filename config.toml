@@ -185,9 +185,12 @@ howl_color = [220, 240, 255]  # ice-blue tint while actively howling |signal| > 
 # triplanar terrain texturing: top texture on flat ground, side texture on
 # slopes/cliffs, blended by the surface normal (no UV distortion on hills).
 triplanar_top_texture = "grass"      # ursina built-in (falls back to white_cube if missing)
-triplanar_side_texture = "brick"     # rock-ish stand-in built into ursina
+triplanar_side_texture = "rock_procedural"  # natural grey-brown rock from assets/textures/ (tools/gen_rock_texture.py regenerates it)
 triplanar_texture_scale = 0.05       # top texture world-space scale (1/m); 0.05 -> tile every 20m
-triplanar_side_texture_scale = 0.05  # side/cliff texture world-space scale
+triplanar_side_texture_scale = 0.02  # side/cliff scale; looser (tile every 50m) so the rock reads as big cliff faces; also accepts [x, y] for non-uniform tiling
+triplanar_blend_zone = 0.5           # triplanar face-overlap width (0..1; lower = wider cross-fade, stock 0.8 hard-cuts)
+triplanar_grass_blend_start = 0.25   # surface normal N.y below this -> full rock
+triplanar_grass_blend_end = 0.75     # N.y above this -> full grass; the band between cross-fades gradually
 shadow_map_size = 2048               # sun shadow map resolution (px)
 shadow_bias = 0.005                  # depth offset; kills shadow acne on low-poly hills
 # sprint dust pips for ground predators (foxes/wolves)

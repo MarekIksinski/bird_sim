@@ -8,6 +8,7 @@ All Ursina entity creation (Sky, terrain, backdrop, trees) is deferred to
 init_environment(), which main.py calls AFTER app = Ursina(vsync=False).
 """
 import numpy as np
+from pathlib import Path
 from ursina import Entity, Mesh, Sky, color, load_texture, scene, Shader, Vec2, Vec3
 
 from ursina.shaders import triplanar_shader
@@ -18,7 +19,10 @@ from config import (TERRAIN_SIZE, TERRAIN_CELL, TERRAIN_RES, TERRAIN_AMP,
                     COLOR_FOG, COLOR_TREE_TRUNK, COLOR_TREE_CROWN,
                     COLOR_BUSH, COLOR_ROCK,
                     TRIPLANAR_TOP_TEXTURE, TRIPLANAR_SIDE_TEXTURE,
-                    TRIPLANAR_TEXTURE_SCALE, TRIPLANAR_SIDE_TEXTURE_SCALE)
+                    TRIPLANAR_TEXTURE_SCALE,
+                    TRIPLANAR_SIDE_TEXTURE_SCALE_X, TRIPLANAR_SIDE_TEXTURE_SCALE_Y,
+                    TRIPLANAR_BLEND_ZONE, TRIPLANAR_GRASS_BLEND_START,
+                    TRIPLANAR_GRASS_BLEND_END)
 
 
 def _smooth(t):
@@ -192,9 +196,9 @@ backdrop = None
 #     dynamic shadows. The Lambert + shadow-sampling block from ursina's
 #     lit_with_shadows_shader is spliced in, so the terrain gets triplanar
 #     blending AND lit shadows in one pass.
-# The blend itself is the stock one: top texture on upward faces, side
-# texture on slopes, weights from the world normal — no UVs, so hills and
-# cliffs never get texture distortion.
+# The blend is CUSTOM (see _BLEND_BLOCK below): wide face overlap +
+# smoothstep N.y grass/rock cross-fade, so slopes transition gradually
+# instead of hard-cutting the side texture onto gentle hills.
 _LIGHT_STRUCT = '''uniform struct {
     vec4 position;
     vec3 color;
@@ -221,9 +225,62 @@ _triplanar_vert = _triplanar_vert.replace(
     '  vertex_position = vec3(p3d_ModelViewMatrix * p3d_Vertex);\n'
     '  shadow_coord[0] = p3d_LightSource[0].shadowViewMatrix * vec4(vertex_position, 1);')
 
+# The blend itself is CUSTOM (replaces the stock constant-width blend):
+#  - wider face-overlap zone (blend_zone default 0.5 vs the stock 0.8) so
+#    the three planar projections cross-fade instead of hard-cutting — the
+#    stock narrow overlap is what made the planar seams read as grid lines;
+#  - the grass<->rock switch on the up-facing projection is a smoothstep on
+#    world_normal.y (grass_blend_start..grass_blend_end) instead of the
+#    stock hard `if (world_normal.y > 0)` cut, so slight slopes stay grassy
+#    and the rock creeps in gradually over the blend band.
+_BLEND_BLOCK = '''    //Custom soft triplanar blend: wide face overlap + smoothstep N.y grass/rock mix
+    vec3 blend_weights = world_normal * world_normal;
+    float maxBlend = max(blend_weights.x, max(blend_weights.y, blend_weights.z));
+    blend_weights = blend_weights - maxBlend*blend_zone;
+    blend_weights = max(blend_weights, 0.0);
+
+    float rcpBlend = 1.0 / max(blend_weights.x + blend_weights.y + blend_weights.z, 1e-5);
+    vec3 blend = blend_weights * rcpBlend;
+
+    vec3 sideX = texture(side_texture, vertex_world_position.zy * side_texture_scale).rgb;
+    vec3 sideY = texture(side_texture, vertex_world_position.xz * side_texture_scale).rgb;
+    vec3 sideZ = texture(side_texture, vertex_world_position.xy * side_texture_scale).rgb;
+    vec3 topY  = texture(p3d_Texture0, vertex_world_position.xz * texture_scale.xy).rgb;
+
+    // up-facing ground cross-fades rock -> grass across the blend band
+    // (smoothstep on N.y; no hard cut at the horizon)
+    float upness = smoothstep(grass_blend_start, grass_blend_end, world_normal.y);
+
+    vec3 triPlanar = sideX*blend.x + mix(sideY, topY, upness)*blend.y + sideZ*blend.z;'''
+
 _triplanar_frag = triplanar_shader.fragment.replace(
+    '''    //Constant width Triplanar blending
+    vec3 blend_weights = world_normal * world_normal;//or abs(world_normal) for linear falloff(and adjust BlendZone)
+    float maxBlend = max(blend_weights.x, max(blend_weights.y, blend_weights.z));
+
+    float BlendZone = 0.8f;
+    blend_weights = blend_weights - maxBlend*BlendZone;
+    blend_weights = max(blend_weights, 0.0);
+
+    float rcpBlend = 1.0 / (blend_weights.x + blend_weights.y + blend_weights.z);
+    vec3 blend = blend_weights * rcpBlend;
+
+    vec3 albedoX = texture(side_texture, vertex_world_position.zy * side_texture_scale).rgb*blend.x;
+    vec3 albedoY = texture(side_texture, vertex_world_position.xz * side_texture_scale).rgb*blend.y;
+    vec3 albedoZ = texture(side_texture, vertex_world_position.xy * side_texture_scale).rgb*blend.z;
+
+    if (world_normal.y > .0) {
+        albedoY = texture(p3d_Texture0, vertex_world_position.xz * texture_scale.xy).rgb*blend.y;
+    }
+
+    vec3 triPlanar = (albedoX + albedoY + albedoZ);''',
+    _BLEND_BLOCK)
+_triplanar_frag = _triplanar_frag.replace(
     'uniform vec2 side_texture_scale;',
     'uniform vec2 side_texture_scale;\n'
+    'uniform float blend_zone;\n'
+    'uniform float grass_blend_start;\n'
+    'uniform float grass_blend_end;\n'
     + _LIGHT_STRUCT +
     'in vec4 shadow_coord[1];\n'
     'in vec3 vertex_position;\n'
@@ -274,16 +331,25 @@ _triplanar_frag = _triplanar_frag.replace(
     '    fragColor = mix(_c, fog_color, _t * fog_color.a);')
 assert _triplanar_vert != triplanar_shader.vertex and \
        _triplanar_frag != triplanar_shader.fragment and \
-       'cast_shadows(_c' in _triplanar_frag, \
-    'ursina triplanar_shader source changed: the lighting/fog/vec4 patches no longer apply'
+       'cast_shadows(_c' in _triplanar_frag and \
+       'smoothstep(grass_blend_start' in _triplanar_frag and \
+       'if (world_normal.y > .0)' not in _triplanar_frag, \
+    'ursina triplanar_shader source changed: the lighting/fog/blend patches no longer apply'
 
 triplanar_terrain_shader = Shader(
     name='triplanar_terrain', language=Shader.GLSL,
     vertex=_triplanar_vert, fragment=_triplanar_frag,
     default_input={
         'texture_scale': Vec2(1, 1),
-        'side_texture': 'brick',
+        # natural rock stand-in generated by tools/gen_rock_texture.py
+        # (assets/textures/rock_procedural.png); init_environment loads it
+        # via _load_tex_wrap. Default is white_cube because ursina rejects
+        # a None texture input if the asset is missing at shader-assign time.
+        'side_texture': 'white_cube',
         'side_texture_scale': Vec2(1, 1),
+        'blend_zone': 0.5,             # face-overlap width (stock 0.8 = hard cuts)
+        'grass_blend_start': 0.25,     # N.y below this: full rock
+        'grass_blend_end': 0.75,       # N.y above this: full grass
         'shadow_color': color.rgba(0, .5, 1, .25),
         'shadow_bias': 0.001,
         'shadow_blur': .005,
@@ -305,9 +371,21 @@ def _load_tex_wrap(name, fallback='white_cube'):
     shader samples WORLD position * scale, so coordinates far exceed 0..1
     and clamp-to-edge would smear the outermost texel across the field).
     Falls back safely (missing texture -> white_cube -> None)."""
+    t = None
     try:
         t = load_texture(name)
     except Exception:
+        t = None
+    if t is None:
+        # ursina's asset_folder is the CWD at Ursina() time; when a tool
+        # runs from elsewhere, search the project's own assets/ folder.
+        try:
+            # use_cache=False: a failed first attempt caches None under the name
+            t = load_texture(name, folder=Path(__file__).resolve().parent / 'assets',
+                             use_cache=False)
+        except Exception:
+            t = None
+    if t is None:
         print(f"[terrain] texture '{name}' unavailable; using '{fallback}'")
         try:
             t = load_texture(fallback)
@@ -332,9 +410,11 @@ def init_environment():
     from config import _FOG_RANGE
     scene.fog_density = _FOG_RANGE
 
-    # --- Triplanar terrain: grass on flat ground, rock on slopes/cliffs,
-    # blended by world normal (no UV distortion on hills). Scales are
-    # world-space (1/m): 0.05 -> one texture tile per 20m. ---
+    # --- Triplanar terrain: grass on flat ground, natural rock on slopes,
+    # cross-faded by world normal (no UV distortion, no hard cut on gentle
+    # slopes). Scales are world-space (1/m): 0.05 -> one texture tile per
+    # 20m; the side scale is looser (0.02 -> 50m tiles) so the rock reads
+    # as big cliff faces instead of tightly repeating grain. ---
     top_tex = _load_tex_wrap(TRIPLANAR_TOP_TEXTURE)
     side_tex = _load_tex_wrap(TRIPLANAR_SIDE_TEXTURE)
     terrain = Entity(model=build_terrain_mesh(), texture=top_tex,
@@ -343,7 +423,11 @@ def init_environment():
     terrain.set_shader_input('texture_scale',
                              Vec2(TRIPLANAR_TEXTURE_SCALE, TRIPLANAR_TEXTURE_SCALE))
     terrain.set_shader_input('side_texture_scale',
-                             Vec2(TRIPLANAR_SIDE_TEXTURE_SCALE, TRIPLANAR_SIDE_TEXTURE_SCALE))
+                             Vec2(TRIPLANAR_SIDE_TEXTURE_SCALE_X,
+                                  TRIPLANAR_SIDE_TEXTURE_SCALE_Y))
+    terrain.set_shader_input('blend_zone', TRIPLANAR_BLEND_ZONE)
+    terrain.set_shader_input('grass_blend_start', TRIPLANAR_GRASS_BLEND_START)
+    terrain.set_shader_input('grass_blend_end', TRIPLANAR_GRASS_BLEND_END)
     if side_tex is not None:
         terrain.set_shader_input('side_texture', side_tex)
 

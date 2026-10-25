@@ -195,7 +195,7 @@ backend.py    --cpu / FORCE_CPU handling, CuPy VRAM probe, cp / np / to_cpu
 config.py     config.toml -> all uppercase constants + derived values
 math3d.py     pure NumPy batched quaternion math (_q_mul_b, _slerp_np, ...)
 terrain.py    heightmaps + height_at at import; sky/triplanar terrain/
-              backdrop + procedural props (80 trunk+crown trees, 120
+              backdrop + props (80 Tree.glb model trees, 120
               valley bushes, 100 slope/backdrop rocks) via init_environment()
 predators.py  hawk pack state, neuroevolution, flight physics, checkpoints
 flock.py      starling state, tribe NNs, update_boids_gpu, FlockVisuals
@@ -325,8 +325,9 @@ main.py       entrypoint orchestrator (init order + global input/update)
   unchanged), play-wins-at-center / backdrop-wins-in-the-four arena
   corners, scalar vs array call parity, and the intact play-3 feathering
   at backdrop lattice vertices. Run: `.venv/bin/python tools/verify_terrain_backdrop.py`
-- `tools/verify_props.py` — procedural-props gate: exact counts (80 tree
-  trunk+crown pairs, 120 valley bushes, 100 slope/backdrop rocks), prop
+- `tools/verify_props.py` — props gate: exact counts (80 GLB model trees —
+  falls back to 80 procedural trunk+crown pairs if `tree_model = ""` or the
+  asset is missing — 120 valley bushes, 100 slope/backdrop rocks), prop
   bases flush on `height_at()` (rocks sunk 0.4x height by design), roost
   clearing respected, bushes only in low valleys, crowns atop trunks, and
   prop-scattering startup time <2s (terrain/backdrop mesh builders stubbed).

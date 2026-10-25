@@ -22,7 +22,8 @@ from config import (TERRAIN_SIZE, TERRAIN_CELL, TERRAIN_RES, TERRAIN_AMP,
                     TRIPLANAR_TEXTURE_SCALE,
                     TRIPLANAR_SIDE_TEXTURE_SCALE_X, TRIPLANAR_SIDE_TEXTURE_SCALE_Y,
                     TRIPLANAR_BLEND_ZONE, TRIPLANAR_GRASS_BLEND_START,
-                    TRIPLANAR_GRASS_BLEND_END)
+                    TRIPLANAR_GRASS_BLEND_END,
+                    TREE_MODEL, TREE_SCALE_RANGE)
 
 
 def _smooth(t):
@@ -462,10 +463,50 @@ def init_environment():
 
     r_of = lambda x, z: np.sqrt(x * x + z * z)
 
-    # 1. Trees — trunk + foliage crown, outside the roost clearing
+    # 1. Trees — GLB model (assets/Tree.glb: Trunk + Leaves child nodes),
+    #    outside the roost clearing. ursina caches the parsed GLB, so each
+    #    load_model call returns a cheap shallow copy sharing one geometry
+    #    (the same NodePath can't be parented to 80 entities, hence one
+    #    copy per tree). GLB baked materials are ignored by ursina's
+    #    shaders, so the entity color tints the leaves and a nested
+    #    colorScale on the Trunk child tints the trunk. The pivot is set
+    #    to the model's bbox base so trees sit flush on height_at. Falls
+    #    back to the old procedural trunk+crown boxes if the asset is
+    #    missing.
     tree_pts = _scatter(80, lambda x, z, h: r_of(x, z) > ROOST_CLEAR_RADIUS + 10)
+    tree_origin_y = None
+    if TREE_MODEL:
+        try:
+            from ursina.mesh_importer import load_model
+            probe = load_model(TREE_MODEL,
+                               folder=Path(__file__).resolve().parent / 'assets')
+            if probe is not None:
+                tree_origin_y = float(probe.getTightBounds()[0][1])
+        except Exception:
+            tree_origin_y = None
+        if tree_origin_y is None:
+            print(f"[terrain] tree model '{TREE_MODEL}' unavailable; "
+                  "falling back to procedural trunk+crown")
     for x, z in tree_pts:
         h = float(height_at(x, z))
+        if tree_origin_y is not None:
+            t = Entity(model=load_model(TREE_MODEL,
+                                        folder=Path(__file__).resolve().parent / 'assets'),
+                       color=color.rgba32(*COLOR_TREE_CROWN),
+                       scale=rng.uniform(*TREE_SCALE_RANGE),
+                       position=(x, h, z), origin=(0, tree_origin_y, 0))
+            t.model.name = 'Tree'   # identify instances (verify_props)
+            trunk = None
+            for _c in t.model.getChildren():
+                if _c.getName() == 'Trunk':
+                    trunk = _c
+                    break
+            if trunk:
+                # detach from the entity's (leaf) colorScale, then tint trunk
+                trunk.setColorScaleOff()
+                trunk.setColorScale(*[c / 255 for c in COLOR_TREE_TRUNK])
+            t.y_rotation = rng.uniform(0, 360)
+            continue
         trunk_h = rng.uniform(4.0, 9.0)
         Entity(model='cube', color=color.rgba32(*COLOR_TREE_TRUNK),
                scale=(0.8, trunk_h, 0.8), position=(x, h + trunk_h / 2, z))

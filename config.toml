@@ -73,7 +73,7 @@ reset_keys = "r"
 
 [pack]
 population_size = 10        # hawks flying simultaneously each generation
-generation_seconds = 45.0   # generation length; then rank -> 3-tiered speciation
+generation_seconds = 60.0   # generation length; then rank -> 3-tiered speciation
 mutation_tiny = 0.02        # tier 1: champion lineage (exploitation, fine-tune)
 mutation_medium = 0.08      # tier 2: runner-up lineage (balanced exploration)
 mutation_heavy = 0.20       # tier 3: wildcard lineage (high-variance lottery)
@@ -191,6 +191,8 @@ triplanar_side_texture_scale = 0.02  # side/cliff scale; looser (tile every 50m)
 triplanar_blend_zone = 0.5           # triplanar face-overlap width (0..1; lower = wider cross-fade, stock 0.8 hard-cuts)
 triplanar_grass_blend_start = 0.25   # surface normal N.y below this -> full rock
 triplanar_grass_blend_end = 0.75     # N.y above this -> full grass; the band between cross-fades gradually
+tree_model = "Tree"                  # assets/Tree.glb (Trunk+Leaves); "" = procedural trunk+crown boxes
+tree_scale_range = [0.35, 0.75]      # per-tree uniform scale range (GLB is ~10m tall; 0.35-0.75 -> 3.5-7.5m)
 shadow_map_size = 2048               # sun shadow map resolution (px)
 shadow_bias = 0.005                  # depth offset; kills shadow acne on low-poly hills
 # sprint dust pips for ground predators (foxes/wolves)

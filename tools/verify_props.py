@@ -48,12 +48,20 @@ props = [e for e in scene.entities if e not in (terrain.terrain, terrain.backdro
 # compare against rgb32, i.e. value*255; no slicing on color)
 def _c3(e):
     return (round(e.color[0] * 255), round(e.color[1] * 255), round(e.color[2] * 255))
-trunks = [e for e in props if _c3(e) == (90, 60, 40)]
-crowns = [e for e in props if _c3(e) == (40, 90, 45)]
-bushes = [e for e in props if _c3(e) == (60, 110, 50)]
-rocks  = [e for e in props if _c3(e) == (100, 105, 115)]
-print(f"STEP2 counts: trunks={len(trunks)} crowns={len(crowns)} bushes={len(bushes)} rocks={len(rocks)}")
-assert len(trunks) == 80 and len(crowns) == 80, "tree counts wrong"
+trees = [e for e in props if e.model.getName() == 'Tree']
+_box = lambda e: str(e.model.getName()) in ('cube', 'sphere')
+trunks = [e for e in props if _box(e) and _c3(e) == (90, 60, 40)]
+crowns = [e for e in props if _box(e) and _c3(e) == (40, 90, 45)]
+bushes = [e for e in props if _box(e) and _c3(e) == (60, 110, 50)]
+rocks  = [e for e in props if _box(e) and _c3(e) == (100, 105, 115)]
+print(f"STEP2 counts: trees(GLB)={len(trees)} trunks={len(trunks)} crowns={len(crowns)} "
+      f"bushes={len(bushes)} rocks={len(rocks)}")
+if trees:
+    # GLB path: one entity per tree, no procedural trunk/crown boxes
+    assert len(trees) == 80, "tree count wrong"
+    assert len(trunks) == 0 and len(crowns) == 0, "procedural tree boxes still present"
+else:
+    assert len(trunks) == 80 and len(crowns) == 80, "tree counts wrong"
 assert len(bushes) == 120, "bush count wrong"
 assert len(rocks) == 100, "rock count wrong"
 
@@ -64,7 +72,16 @@ for e in trunks + bushes + rocks:
     err = abs((e.y - e.scale_y / 2.0) - h)
     if err > worst:
         worst = err
-print(f"STEP3 worst base-vs-ground error (trunks/bushes/rocks): {worst:.3f} m")
+for e in trees:
+    # GLB trees pivot at their bbox base (origin=(0, y_min, 0)) -> e.y == ground
+    h = float(terrain.height_at(e.x, e.z))
+    err = abs(e.y - h)
+    if err > worst:
+        worst = err
+print(f"STEP3 worst base-vs-ground error (trees/trunks/bushes/rocks): {worst:.3f} m")
+for e in trees:
+    h = float(terrain.height_at(e.x, e.z))
+    assert abs(e.y - h) < 0.05, f"GLB tree floating {e}"
 for e in trunks:
     h = float(terrain.height_at(e.x, e.z))
     assert abs((e.y - e.scale_y/2) - h) < 0.01, f"trunk floating {e}"
@@ -78,7 +95,7 @@ for e in rocks:
     assert abs((e.y - e.scale_y/2) - h + 0.4*e.scale_y) < 0.01, f"rock not anchored {e}"
 
 # roost clearing: no tree/bush inside the bowl
-for e in trunks + crowns:
+for e in (trees + trunks + crowns):
     r = (e.x*e.x + e.z*e.z) ** 0.5
     assert r > ROOST_CLEAR_RADIUS + 10 - 1e-6, f"tree inside clearing r={r}"
 for e in bushes:
@@ -93,7 +110,7 @@ print("STEP4 clearing/valley constraints OK")
 # determinism: run placement math twice via rng replay — re-init in a fresh
 # process would be heavy; instead check rng-seeded positions are a fixed set:
 # just assert positions are all distinct (no degenerate repeats)
-pos = {(round(e.x, 3), round(e.z, 3)) for e in trunks}
+pos = {(round(e.x, 3), round(e.z, 3)) for e in (trees or trunks)}
 assert len(pos) == 80
 print("STEP5 distinct positions OK")
 

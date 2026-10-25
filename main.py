@@ -24,9 +24,11 @@ evolution, so `from module import var` would silently go stale.
 # backend first: strips --cpu from sys.argv and runs the CuPy VRAM probe
 # BEFORE Ursina sees the command line or anything allocates arrays.
 import backend
-from config import _FOG_RANGE
+from config import _FOG_RANGE, SHADOW_BIAS, SHADOW_MAP_SIZE
 
-from ursina import Ursina, scene
+from ursina import Ursina, Entity, Vec2, Vec3, scene
+from ursina.lights import DirectionalLight
+from ursina.shaders import lit_with_shadows_shader
 
 import terrain
 import predators
@@ -36,8 +38,28 @@ import foxes
 import wolves
 import player
 import hud_cam
-
 app = Ursina(vsync=False)
+
+# --- advanced lighting: every entity built AFTER this point gets the
+# shadow-casting lit shader by default (Text/Sky pin their own shaders in
+# their constructors, so the HUD and skydome are unaffected). The terrain
+# OVERRIDES this with triplanar_shader (terrain.init_environment) and
+# re-adds the shadow inputs there. ---
+Entity.default_shader = lit_with_shadows_shader
+
+# --- dynamic shadow-casting sun. look_at() re-fits the shadow lens bounds
+# to the scene; terrain.init_environment() calls sun.update_bounds() again
+# once every entity exists so the lens covers the whole arena. shadow_bias
+# is raised from the shader default (0.001) to kill shadow acne on the
+# low-poly hills — patched into the shader's default_input BEFORE any
+# entity is built, because ursina copies default_input onto each entity at
+# shader-assignment time (a later render-level input would be overridden).
+# ---
+lit_with_shadows_shader.default_input['shadow_bias'] = SHADOW_BIAS
+terrain.triplanar_terrain_shader.default_input['shadow_bias'] = SHADOW_BIAS
+sun = DirectionalLight(shadow_map_resolution=Vec2(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE),
+                       shadows=True)
+sun.look_at(Vec3(-1, -1.2, -1))
 
 # --- persistence: resume the evolved pack + starling tribes + fox pairs
 # + wolf pairs, then rebuild the cp-resident tribe layer tensors from
@@ -66,6 +88,15 @@ predators.respawn_pack()
 scene.fog_density = _FOG_RANGE
 terrain.backdrop.set_shader_input('fog_start', 800)
 terrain.backdrop.set_shader_input('fog_end', 5000)
+# the triplanar terrain is NOT touched by the fog setter's default_input
+# check unless its shader declares fog_start/fog_end — it does (terrain.py),
+# but re-assert here so it can never keep the stock (10,100) defaults.
+terrain.terrain.set_shader_input('fog_start', _FOG_RANGE[0])
+terrain.terrain.set_shader_input('fog_end', _FOG_RANGE[1])
+
+# Re-fit the sun's shadow lens now that the whole scene (terrain, props,
+# predators) exists — look_at() above fitted it to a near-empty scene.
+sun.update_bounds()
 
 # --- Ursina global callbacks (delegated; Ursina polls these by name) ---
 def input(key):

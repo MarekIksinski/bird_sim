@@ -19,7 +19,8 @@ ALWAYS access this module's state through the module namespace
 (foxes.fox_pos, foxes.pair_pop, ...): updates and replacements REBIND names.
 """
 import numpy as np
-from ursina import Entity, Mesh, color, time
+from ursina import Entity, Mesh, Vec3, color, scene, time, load_texture
+from ursina.shaders.unlit_with_fog_shader import unlit_with_fog_shader
 
 from config import (NUM_FOXES, NUM_PAIRS, FOXES_PER_PAIR, TERRAIN_SIZE,
                     FOX_CRUISE_SPEED, FOX_BOOST_SPEED, FOX_STALK_FACTOR,
@@ -31,7 +32,9 @@ from config import (NUM_FOXES, NUM_PAIRS, FOXES_PER_PAIR, TERRAIN_SIZE,
                     FOX_STARVE_SECONDS, FOX_STALK_HUNGER_RELIEF,
                     FOX_MUTATION_SIGMA, FOX_HIDDEN_LAYERS,
                     FOX_WOLF_PANIC_RADIUS,
-                    RABBIT_FLEE_SPEED, COLOR_FOX)
+                    RABBIT_FLEE_SPEED, COLOR_FOX,
+                    COLOR_DUST, SPRINT_DUST_FACTOR,
+                    DUST_INTERVAL, DUST_LIFETIME, FOX_DUST_POOL)
 import terrain
 from math3d import _q_from_aa_b, _q_mul_b
 
@@ -152,6 +155,68 @@ _WALL_SENSOR = 80.0           # wall-repulsion sensor range (obs 11)
 _STATE_MAP = np.array([-1.0, -1.0, 0.0, 1.0], dtype=np.float32)  # 0/1,2,3 -> -1,0,+1
 
 
+# --- SPRINT DUST TRAILS -------------------------------------------------------
+# A tiny fixed pool of ground-hugging quad pips: a sprinting fox kicks one up
+# behind it every DUST_INTERVAL seconds; each pip grows + fades over
+# DUST_LIFETIME seconds, then its slot is disabled and recycled (round-robin
+# cursor — no allocations after startup, so the trail cost is a handful of
+# quad draws and property writes per frame).
+class DustPool:
+    def __init__(self, n, base_size=0.35):
+        try:
+            tex = load_texture('circle')   # soft round pip; falls back inside load_texture
+        except Exception:
+            tex = None
+        self.base_size = base_size
+        self._base_rgba = [float(c) for c in COLOR_DUST]
+        self.age = np.full(n, 1e9, dtype=np.float32)   # >= DUST_LIFETIME -> free slot
+        self.pips = []
+        for _ in range(n):
+            e = Entity(model='quad', texture=tex, scale=0.0001,
+                       x_rotation=90,                       # flat on the ground
+                       color=color.rgba32(*COLOR_DUST),
+                       transparent=True, double_sided=True,
+                       shader=unlit_with_fog_shader, parent=scene)
+            e.enabled = False
+            self.pips.append(e)
+        self.cursor = 0
+
+    def emit(self, pos):
+        i = self.cursor
+        self.cursor = (i + 1) % len(self.pips)
+        self.age[i] = 0.0
+        e = self.pips[i]
+        e.position = Vec3(float(pos[0]), float(pos[1]) + 0.06, float(pos[2]))
+        e.scale = self.base_size * 0.5
+        e.color = color.rgba32(int(self._base_rgba[0]), int(self._base_rgba[1]),
+                               int(self._base_rgba[2]), int(self._base_rgba[3]))
+        e.enabled = True
+
+    def step(self, dt):
+        """Age every live pip: grow + fade linearly over DUST_LIFETIME,
+        then disable until the round-robin cursor reuses the slot."""
+        for i, e in enumerate(self.pips):
+            if self.age[i] >= DUST_LIFETIME:
+                continue
+            self.age[i] += dt
+            t = self.age[i] / DUST_LIFETIME
+            if t >= 1.0:
+                self.age[i] = 1e9
+                e.enabled = False
+            else:
+                # float(): ursina's scale setter mistakes a numpy scalar for a
+                # (2d/3d) scale sequence
+                e.scale = float(self.base_size * (0.5 + 1.3 * t))
+                e.color = color.rgba32(int(self._base_rgba[0]),
+                                       int(self._base_rgba[1]),
+                                       int(self._base_rgba[2]),
+                                       int(self._base_rgba[3] * (1.0 - t)))
+
+# the foxes' pool (built by FoxVisuals once Ursina exists)
+_dust_pool = None
+_dust_cooldown = np.zeros(NUM_FOXES, dtype=np.float32)
+
+
 def update_foxes():
     """One frame for the whole fox pack: obs -> pair MLPs -> yaw/throttle
     physics -> scoring -> starvation replacement. Pure NumPy, true m/s."""
@@ -257,6 +322,24 @@ def update_foxes():
     fox_pos[:, 0] = np.clip(fox_pos[:, 0], -_fox_edge, _fox_edge)
     fox_pos[:, 2] = np.clip(fox_pos[:, 2], -_fox_edge, _fox_edge)
     fox_pos[:, 1] = terrain.height_at(fox_pos[:, 0], fox_pos[:, 2])
+
+    # --- sprint dust: a fox above cruise * SPRINT_DUST_FACTOR kicks up a
+    # ground pip behind it (pos - forward * 0.5) every DUST_INTERVAL seconds;
+    # pips grow + fade in the pool and recycle (see DustPool) ---
+    if _dust_pool is not None:
+        np.subtract(_dust_cooldown, dt, out=_dust_cooldown)   # in-place: no rebinding
+        sprinting = fox_speed > FOX_CRUISE_SPEED * SPRINT_DUST_FACTOR
+        fire = sprinting & (_dust_cooldown <= 0.0)
+        if fire.any():
+            fi = np.nonzero(fire)[0]
+            fx2 = np.stack([np.sin(fox_yaw[fi]), np.zeros(fi.size),
+                            np.cos(fox_yaw[fi])], axis=1)
+            rear = fox_pos[fi] - fx2 * 0.5
+            rear[:, 1] = terrain.height_at(rear[:, 0], rear[:, 2])
+            for k in range(fi.size):
+                _dust_pool.emit(rear[k])
+            _dust_cooldown[fi] = DUST_INTERVAL
+        _dust_pool.step(dt)
 
     # --- pair scoring (per-fox rates summed per pair) ---
     prox = (dmin < FOX_PROXIMITY_RADIUS).astype(np.float32) * 0.5
@@ -391,6 +474,7 @@ def _pair_starve_check():
 # --- FoxVisuals: batched dart mesh (mirrors RabbitVisuals) ---
 class FoxVisuals(Entity):
     def __init__(self):
+        global _dust_pool
         super().__init__()
         self.model = Mesh(vertices=[], triangles=[], colors=[], mode='triangle', static=False)
         self.texture = 'white_cube'
@@ -400,6 +484,7 @@ class FoxVisuals(Entity):
         self.color = color.rgba32(*COLOR_FOX)   # sleek rust-orange darts
         self.double_sided = True
         self.fox_shape = np.array([[0, 0, 0.85], [-0.28, 0, -0.45], [0.28, 0, -0.45]], dtype=np.float32)
+        _dust_pool = DustPool(FOX_DUST_POOL)
 
     def update(self):
         update_foxes()

@@ -34,7 +34,9 @@ from config import (NUM_WOLVES, NUM_WOLF_PAIRS, WOLVES_PER_PAIR, TERRAIN_SIZE,
                     WOLF_ASSIST_RADIUS, WOLF_ASSIST_SHARE,
                     WOLF_HOWL_COOP_BONUS, WOLF_STARVE_SECONDS,
                     WOLF_MUTATION_SIGMA, WOLF_HIDDEN_LAYERS,
-                    FOX_BOOST_SPEED, COLOR_WOLF, COLOR_WOLF_HOWL)
+                    FOX_BOOST_SPEED, COLOR_WOLF, COLOR_WOLF_HOWL,
+                    SPRINT_DUST_FACTOR, DUST_INTERVAL,
+                    WOLF_DUST_POOL)
 import terrain
 from math3d import _q_from_aa_b, _q_mul_b
 
@@ -117,6 +119,11 @@ sel_used = False        # True once TAB has picked a wolf in a wolf cam
 
 # smoothed pitch (deg) along the local terrain slope, for wolf_quat()
 _wolf_pitch_deg = np.zeros(NUM_WOLVES, dtype=np.float32)
+
+# --- sprint dust (shared DustPool class from foxes.py; built by
+# WolfVisuals once Ursina exists, emitted inside update_wolves) ---
+_dust_pool = None
+_dust_cooldown = np.zeros(NUM_WOLVES, dtype=np.float32)
 
 
 def wolf_quat(idx):
@@ -273,6 +280,24 @@ def update_wolves():
     wolf_pos[:, 0] = np.clip(wolf_pos[:, 0], -_wolf_edge, _wolf_edge)
     wolf_pos[:, 2] = np.clip(wolf_pos[:, 2], -_wolf_edge, _wolf_edge)
     wolf_pos[:, 1] = terrain.height_at(wolf_pos[:, 0], wolf_pos[:, 2])
+
+    # --- sprint dust: same DustPool design as foxes.py (pips emitted at
+    # pos - forward * 0.5 every DUST_INTERVAL while above cruise * factor,
+    # grown + faded in-place and recycled) ---
+    if _dust_pool is not None:
+        np.subtract(_dust_cooldown, dt, out=_dust_cooldown)   # in-place: no rebinding
+        sprinting = wolf_speed > WOLF_CRUISE_SPEED * SPRINT_DUST_FACTOR
+        fire = sprinting & (_dust_cooldown <= 0.0)
+        if fire.any():
+            wi = np.nonzero(fire)[0]
+            fw2 = np.stack([np.sin(wolf_yaw[wi]), np.zeros(wi.size),
+                            np.cos(wolf_yaw[wi])], axis=1)
+            rear = wolf_pos[wi] - fw2 * 0.5
+            rear[:, 1] = terrain.height_at(rear[:, 0], rear[:, 2])
+            for k in range(wi.size):
+                _dust_pool.emit(rear[k])
+            _dust_cooldown[wi] = DUST_INTERVAL
+        _dust_pool.step(dt)
 
     # --- catches: foxes (big meal) and rabbits (snack) ---
     # Fox catch: fresh distances (post-integration) so a wolf that ran the
@@ -443,6 +468,7 @@ def _wolf_starve_check():
 # per-wolf vertex colors so a howling wolf lights up ice-blue on screen) ---
 class WolfVisuals(Entity):
     def __init__(self):
+        global _dust_pool
         super().__init__()
         self.model = Mesh(vertices=[], triangles=[], colors=[], mode='triangle', static=False)
         self.texture = 'white_cube'
@@ -456,6 +482,9 @@ class WolfVisuals(Entity):
         self.wolf_shape = np.array([[0, 0, 1.3], [-0.42, 0, -0.65], [0.42, 0, -0.65]], dtype=np.float32)
         self._coat = color.rgba32(*COLOR_WOLF)
         self._howl = color.rgba32(*COLOR_WOLF_HOWL)
+        # sprint dust: reuse foxes.DustPool (bigger pips for the bigger animal)
+        import foxes
+        _dust_pool = foxes.DustPool(WOLF_DUST_POOL, base_size=0.55)
 
     def update(self):
         update_wolves()

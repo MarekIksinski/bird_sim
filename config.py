@@ -340,6 +340,20 @@ COLOR_ROCK       = _color('colors', 'rock',       (100, 105, 115))
 COLOR_HUD_INFO   = _color('colors', 'hud_info',   (255, 255, 255, 120))
 COLOR_HUD_GEN    = _color('colors', 'hud_gen',    (255, 220, 120, 200))
 COLOR_HUD_KILLS  = _color('colors', 'hud_kills',  (255, 0, 0))
+COLOR_DUST       = _color('colors', 'dust',       (200, 176, 144, 150))
+
+# --- 1f. VISUALS ([visuals]: triplanar terrain + sun shadows + sprint dust) ---
+TRIPLANAR_TOP_TEXTURE = str(_get('visuals', 'triplanar_top_texture', 'grass'))
+TRIPLANAR_SIDE_TEXTURE = str(_get('visuals', 'triplanar_side_texture', 'brick'))
+TRIPLANAR_TEXTURE_SCALE = float(_get('visuals', 'triplanar_texture_scale', 0.05))
+TRIPLANAR_SIDE_TEXTURE_SCALE = float(_get('visuals', 'triplanar_side_texture_scale', 0.05))
+SHADOW_MAP_SIZE = int(_get('visuals', 'shadow_map_size', 2048))
+SHADOW_BIAS = float(_get('visuals', 'shadow_bias', 0.005))
+SPRINT_DUST_FACTOR = float(_get('visuals', 'sprint_dust_factor', 1.5))
+DUST_INTERVAL = float(_get('visuals', 'dust_interval', 0.12))
+DUST_LIFETIME = float(_get('visuals', 'dust_lifetime', 0.4))
+FOX_DUST_POOL = int(_get('visuals', 'fox_dust_pool', 96))
+WOLF_DUST_POOL = int(_get('visuals', 'wolf_dust_pool', 48))
 # wolf coat + howl highlight live in [wolves] (not [colors]): section-local
 # tunables alongside the rest of the wolf block (parsed after _color exists).
 COLOR_WOLF      = _color('wolves', 'color',      (130, 140, 155))

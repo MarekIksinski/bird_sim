@@ -119,6 +119,16 @@ NumPy when VRAM is tight).
   (`catches: N (you: M)`), never in the AI pack's neuroevolution fitness.
   Its flight feel (speeds, rates, key
   bindings) is configured separately in `[player]`.
+- **Visual fidelity layer** — the terrain renders with a **triplanar
+  shader** (grass on flat ground, rock on slopes, blended by the world
+  normal, so hills never get UV distortion; derived from ursina's built-in
+  `triplanar_shader` with its GLSL compile bug fixed and fog + shadow
+  lighting spliced in; textures/scales in `[visuals]`). A **dynamic
+  shadow-casting sun** (`DirectionalLight`, shadow map + bias in
+  `[visuals]`) lights every entity through `lit_with_shadows_shader`, and
+  **sprint dust trails**: foxes/wolves above 1.5x cruise kick up fading
+  ground pips behind them from a fixed recycled entity pool (rate,
+  lifetime, pool sizes in `[visuals]`, pip color in `[colors] dust`).
 
 ## Running
 
@@ -136,7 +146,7 @@ live for `tail -f`) and `history.csv` (one rich row per generation for
 charting). Everything respects `[pack] persist = false`.
 
 All tunables live in `config.toml` (flock, flock_nn, hawk, player, pack,
-rabbits, foxes, wolves, terrain, game). Gravity/dive knobs: `[hawk]` `gravity`, `dive_max_speed`,
+rabbits, foxes, wolves, terrain, visuals, colors, game). Gravity/dive knobs: `[hawk]` `gravity`, `dive_max_speed`,
 `min_flight_speed`, `stall_speed`, `lift_grip`, `induced_drag` (all shared
 by the player) and `[flock]`
 `gravity`, `min_bird_speed`, `dive_speed_mult`, `climb_speed_mult`.
@@ -180,9 +190,9 @@ Strict bottom-up layering (each module only imports layers below it):
 backend.py    --cpu / FORCE_CPU handling, CuPy VRAM probe, cp / np / to_cpu
 config.py     config.toml -> all uppercase constants + derived values
 math3d.py     pure NumPy batched quaternion math (_q_mul_b, _slerp_np, ...)
-terrain.py    heightmaps + height_at at import; sky/terrain/backdrop +
-              procedural props (80 trunk+crown trees, 120 valley bushes,
-              100 slope/backdrop rocks) via init_environment()
+terrain.py    heightmaps + height_at at import; sky/triplanar terrain/
+              backdrop + procedural props (80 trunk+crown trees, 120
+              valley bushes, 100 slope/backdrop rocks) via init_environment()
 predators.py  hawk pack state, neuroevolution, flight physics, checkpoints
 flock.py      starling state, tribe NNs, update_boids_gpu, FlockVisuals
 rabbits.py    ground-prey FSM, update_rabbits, RabbitVisuals
@@ -317,3 +327,9 @@ main.py       entrypoint orchestrator (init order + global input/update)
   clearing respected, bushes only in low valleys, crowns atop trunks, and
   prop-scattering startup time <2s (terrain/backdrop mesh builders stubbed).
   Run: `.venv/bin/python tools/verify_props.py`
+- `tools/verify_visuals.py` — visuals gate: terrain carries the patched
+  triplanar shader (stock `.rgba` bug gone, fog + cast_shadows present,
+  `[visuals]` scales applied), the sun is a shadow caster with the raised
+  bias, and the sprint-dust pools emit only above cruise*factor, plateau
+  below the pool cap (fade + recycle proven), and land exactly 0.5m behind
+  the animal. Run: `.venv/bin/python tools/verify_visuals.py`

@@ -32,7 +32,7 @@ slow_factor = 0.45        # throttle out = -1 -> cruise * this
 yaw_rate = 80.0           # deg/s, NN output
 pitch_rate = 60.0         # deg/s, NN output
 roll_speed = 60.0         # deg/s, NN output
-max_altitude = 150.0      # sky barrier height (m); needs room for full loops
+max_altitude = 180.0      # sky barrier height (m); needs room for full loops
 gravity = 2.2             # pitch-gravity along the flight path: stoop builds speed, climb bleeds it
 dive_max_speed = 6.8      # terminal velocity in a steep stoop (above boost_speed)
 min_flight_speed = 0.9    # airspeed floor: a hawk never hovers
@@ -144,7 +144,7 @@ stealth_flee_radius = 7.5   # creeping fox (min stalk speed) only triggers Flee 
 stealth_freeze_radius = 22.0  # creeping fox triggers Freeze out to here
 sprint_flee_radius = 50.0   # sprinting fox triggers Flee out to here (= rabbit flee_radius)
 proximity_radius = 80.0     # NN sensor + proximity score radius
-starve_seconds = 180.0       # no catch for this long -> pair replaced (Moran)
+starve_seconds = 240.0       # no catch for this long -> pair replaced (Moran)
 stalk_hunger_relief = 0.4   # hunger timer slows to this while actively stalking
 mutation_sigma = 0.07       # gaussian noise on offspring pair weights
 hidden_layers = [24, 12]    # fox pair MLP: (15 sensors) -> 24 -> 12 -> (2 outputs)
@@ -175,13 +175,30 @@ howl_radius = 250.0         # m; max range at which wolves hear vocal signals
 assist_radius = 35.0        # m; any other wolf here when a kill happens shares the reward
 assist_share = 0.65         # fraction of kill score + hunger relief for assisting pairs
 howl_coop_bonus = 25.0      # extra score when a kill is assisted AND someone was howling
-starve_seconds = 180.0      # 3-minute continuous Moran starvation timer
+starve_seconds = 240.0      # 3-minute continuous Moran starvation timer
 mutation_sigma = 0.07       # gaussian noise on offspring pair weights
 hidden_layers = [32, 16]    # wolf pair MLP: (16 sensors) -> 32 -> 16 -> (3 outputs)
 color = [130, 140, 155]     # silver/slate-grey wolf coat
 howl_color = [220, 240, 255]  # ice-blue tint while actively howling |signal| > 0.5
 
+[visuals]
+# triplanar terrain texturing: top texture on flat ground, side texture on
+# slopes/cliffs, blended by the surface normal (no UV distortion on hills).
+triplanar_top_texture = "grass"      # ursina built-in (falls back to white_cube if missing)
+triplanar_side_texture = "brick"     # rock-ish stand-in built into ursina
+triplanar_texture_scale = 0.05       # top texture world-space scale (1/m); 0.05 -> tile every 20m
+triplanar_side_texture_scale = 0.05  # side/cliff texture world-space scale
+shadow_map_size = 2048               # sun shadow map resolution (px)
+shadow_bias = 0.005                  # depth offset; kills shadow acne on low-poly hills
+# sprint dust pips for ground predators (foxes/wolves)
+sprint_dust_factor = 1.5             # speed > cruise * factor -> emit dust
+dust_interval = 0.12                 # seconds between pips per sprinting animal
+dust_lifetime = 0.4                  # seconds for a pip to grow + fade out
+fox_dust_pool = 96                   # recycled pip entities (foxes; ~20 foxes x lifetime/interval + headroom)
+wolf_dust_pool = 48                  # recycled pip entities (wolves)
+
 [colors]
+dust        = [200, 176, 144, 150]  # dry-earth dust pips (a = base alpha)
 # Entity/mesh/HUD colors: "#rrggbb", "#rrggbbaa" or [r, g, b] / [r, g, b, a]
 # (0..255 per channel). Missing keys fall back to the built-in defaults below.
 starling    = "#00ffff"       # starling darts (FlockVisuals)

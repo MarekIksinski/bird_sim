@@ -56,13 +56,14 @@ NumPy when VRAM is tight).
   ground/wall/ceiling scrapes). Between generations, a **3-tiered
   speciation** scheme breeds the top 3: champion lineage with tiny mutation
   (exploitation), runner-up with medium, wildcard with heavy (exploration).
-- **Rabbit prey layer** — 200 rabbits on a pure-NumPy 4-state machine
+- **Rabbit prey layer** — 400 rabbits on a pure-NumPy 4-state machine
   (Forage / Vigilance / Freeze / Flee) that react to the nearest hawk and
-  sprint to invisible burrows, diving underground when cornered.
-- **Fox pairs (ground predators, continuous evolution)** — 10 foxes in 5
-  pairs, each pair sharing one 12-input MLP (prey direction/velocity/state
+  sprint to invisible burrows (45 of them), diving underground when cornered.
+- **Fox pairs (ground predators, continuous evolution)** — 20 foxes in 10
+  pairs, each pair sharing one 15-input MLP (prey direction/velocity/state
   in the body frame, the prey's escape route to its nearest burrow, own
-  speed + stamina sensors, wall repulsion). Speed-modulated stealth: a
+  speed + stamina sensors, wall repulsion, and the nearest-WOLF direction +
+  threat proximity for apex-predator evasion). Speed-modulated stealth: a
   creeping fox only triggers rabbit Flee at 7.5m / Freeze at 22m, a
   sprinting fox at the full hawk thresholds (50m/100m) — the raw distance
   is rescaled into the hawk-threshold space so the rabbit FSM works
@@ -73,10 +74,28 @@ NumPy when VRAM is tight).
   replacement, so fresh pairs never starve out in a synchronized wave),
   swapped for a mutated copy of a top score-RATE parent, checkpointed to
   `evolution/fox_pairs.npz` with its own shape guard. Boost runs on the
-  same stamina tank/lockout design as the hawks.
+  same stamina tank/lockout design as the hawks. Foxes hunted by wolves get
+  a survival bonus for staying alive inside the wolf panic radius; a fox
+  eaten by a wolf respawns safe and its pair is punished (+35s starvation,
+  -25 score), pushing bad-at-evasion fox pairs toward replacement.
   NOTE: all entity colors use `color.rgba32(r,g,b)` — in this ursina build
   `color.rgb()` is 0..1-scale (an `rgba` alias), so `rgb(215,85,25)` stores
   a 215x color scale that clamps to WHITE.
+- **Wolf pairs (apex predators — the cooperation experiment)** — 8 wolves
+  in 4 pairs, each pair sharing one 16-input / 3-output MLP. The third
+  output is a HOWL: a vocal signal in [-1,1] every other wolf within 250m
+  hears (the packmate sensor is loudness-weighted, so a howling wolf draws
+  attention from farther away). Kills inside a 35m assist radius are
+  **shared across pair boundaries** (0.65 of score + hunger relief to
+  every nearby wolf's pair), with a +25 howl-coop bonus when someone was
+  actively howling — so cooperative pack hunting and vocal communication
+  can emerge between DIFFERENT pairs. Wolves eat foxes (+120, full
+  starvation reset) and rabbits (+45 snack); they are endurance cursors
+  (4.5s sprint tank = 2.5x a fox's) with a wider turning circle (95 deg/s
+  vs the foxes' 140), so a lone wolf cannot simply run down a boosting
+  fox — pincer angles pay. Howling wolves light up ice-blue on screen.
+  Moran starvation replacement like the foxes; `evolution/wolf_pairs.npz`.
+  Rabbits detect an approaching wolf at 55m and flee to burrows.
 - **Spectator hawk (player)** — a keyboard-piloted hawk flying the same
   6-DOF quaternion physics, wall/ceiling deflection, gravity stoop/climb
   energy exchange, stall nose-drop and ground clearance as the AI pack. It
@@ -103,13 +122,14 @@ live for `tail -f`) and `history.csv` (one rich row per generation for
 charting). Everything respects `[pack] persist = false`.
 
 All tunables live in `config.toml` (flock, flock_nn, hawk, player, pack,
-rabbits, foxes, terrain, game). Gravity/dive knobs: `[hawk]` `gravity`, `dive_max_speed`,
+rabbits, foxes, wolves, terrain, game). Gravity/dive knobs: `[hawk]` `gravity`, `dive_max_speed`,
 `min_flight_speed`, `stall_speed`, `lift_grip`, `induced_drag` (all shared
 by the player) and `[flock]`
 `gravity`, `min_bird_speed`, `dive_speed_mult`, `climb_speed_mult`.
 Boost-stamina knobs: `[hawk]` `boost_duration`, `boost_recharge`,
 `boost_cooldown_recover` (also shared with the player).
-Network width knobs: `[hawk] hidden_layers` and `[flock_nn] hidden_layers`
+Network width knobs: `[hawk] hidden_layers`, `[flock_nn] hidden_layers`,
+`[foxes] hidden_layers` and `[wolves] hidden_layers`
 (lists of hidden layer widths; changing either starts that evolution fresh).
 The `[player]` section overrides the spectator hawk's
 speeds/rates (falling back to `[hawk]` values when a line is removed) and
@@ -119,12 +139,13 @@ Evolution checkpoints persist in the folder set by `[pack] save_folder`.
 ## Controls
 
 Camera modes: `1` fixed wide, `2` pack-chase (best hawk), `3` AI
-first-person, `4` player chase, `5` player first-person.
+first-person, `4` player chase, `5` player first-person, `6` fox chase,
+`7` fox first-person, `8` wolf chase, `9` wolf first-person.
 
 | Key | Action |
 |-----|--------|
-| 1 / 2 / 3 / 4 / 5 | switch camera mode (see above) |
-| TAB | cycle the tracked AI hawk |
+| 1 … 9 | switch camera mode (see above) |
+| TAB | cycle the tracked entity: the AI hawk, or the fox in the fox cams, or the wolf in the wolf cams |
 | R | respawn the player hawk (remappable: `[player] reset_keys`) |
 | ESC | quit |
 
@@ -153,6 +174,10 @@ flock.py      starling state, tribe NNs, update_boids_gpu, FlockVisuals
 rabbits.py    ground-prey FSM, update_rabbits, RabbitVisuals
 foxes.py      ground predator pairs: pair MLPs, Moran starvation
               replacement, stealth threat scaling (via rabbits), FoxVisuals
+wolves.py     apex predator pairs: 16-in/3-out MLP with the HOWL vocal
+              channel, inter-pair assist-share rewards, fox+rabbit
+              catches, Moran starvation replacement, WolfVisuals
+              (howling wolves light up via per-vertex colors)
 player.py     spectator hawk state + keyboard flight (live predator:
               fed to predators/rabbits as an extra threat; catches only
               bump player.player_catches)
@@ -215,6 +240,23 @@ main.py       entrypoint orchestrator (init order + global input/update)
   Moran replacement with rate-ranking and [fox_nn] log line, batched
   einsum-vs-loop forward match, fox_pairs.npz round-trip + shape guard.
   Run: `FORCE_CPU=1 .venv/bin/python tools/verify_foxes.py`
+- `tools/verify_wolves.py` — apex wolf pair gate: every `[wolves]` key
+  parsed from config.toml, exact pair split + WOLF_NET_SHAPE (16-in /
+  3-out) / genome match, wall soak + endurance stamina drain/lockout,
+  loudness-weighted howl packmate pick + signal publication, fox catch
+  (+120, register_fox_eaten respawn + pair punishment), rabbit snack
+  (+45, 0.6x relief, burrow respawn), inter-PAIR assist share + howl coop
+  bonus + wolf_coop_kills, the 55m rabbit wolf-threat rescale, starvation
+  Moran with [wolf_nn] log, wolf_pairs.npz round-trip + shape guard.
+  Run: `FORCE_CPU=1 .venv/bin/python tools/verify_wolves.py`
+- `tools/verify_fox_cams.py` — offscreen harness for the fox cameras:
+  fox_quat unit-norm + slope tilt, key 6/7 mode switches, context-aware
+  TAB (fox idx in fox cams, hawk idx elsewhere), chase-cam terrain
+  clearance, FP cam ahead of the nose tip, HUD stamina line.
+  Run: `DISPLAY=:0 .venv/bin/python tools/verify_fox_cams.py`
+- `tools/verify_colors.py` — reads every entity/HUD color back offscreen
+  and compares it to `[colors]` (all rgba32-scaled).
+  Run: `DISPLAY=:0 .venv/bin/python tools/verify_colors.py`
 - `tools/verify_stamina.py` — offscreen harness for the boost-stamina
   cycle: pinned full throttle drains the tank in `boost_duration`, the
   exhaustion lockout clamps throttle to 0 and holds until

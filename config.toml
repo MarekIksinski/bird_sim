@@ -113,12 +113,12 @@ roost_clear_radius = 30.0 # flat bowl around the flock
 fog_density = 0.024      # visibility falloff
 
 [game]
-start_camera = 2          # 1 fixed wide, 2 pack-chase (best hawk), 3 AI first-person (TAB cycles), 4 player chase, 5 player first-person, 6 fox chase (TAB cycles fox), 7 fox first-person
+start_camera = 2          # 1 fixed wide, 2 pack-chase (best hawk), 3 AI first-person (TAB cycles), 4 player chase, 5 player first-person, 6 fox chase (TAB cycles fox), 7 fox first-person, 8 wolf chase (TAB cycles wolf), 9 wolf first-person
 force_cpu = false         # true = skip GPU even if VRAM looks free
 
 [rabbits]
-num_rabbits = 200           # ground prey population (pure NumPy state machine)
-num_burrows = 30            # invisible burrows (physics only, never rendered)
+num_rabbits = 400           # ground prey population (pure NumPy state machine)
+num_burrows = 45            # invisible burrows (physics only, never rendered)
 flee_radius = 50.0          # hawk closer than this -> Flee (state 3)
 freeze_radius = 100.0        # hawk in flee..freeze band -> Freeze (state 2)
 recover_radius = 30.0       # fleeing rabbit reverts to Vigilance past this (hysteresis)
@@ -127,10 +127,10 @@ flee_speed = 6.0            # m/s sprint to the nearest burrow
 escape_radius = 1.0         # within this of a burrow -> dive, pop up at another
 
 [foxes]
-# ground predator pairs: 10 foxes, 5 pairs sharing one MLP each, evolving
+# ground predator pairs: 20 foxes, 10 pairs sharing one MLP each, evolving
 # continuously via a Moran process (starvation replacement, no generations)
-num_foxes = 10
-num_pairs = 5               # num_foxes % num_pairs must be 0 (FOXES_PER_PAIR contiguous)
+num_foxes = 20
+num_pairs = 10              # num_foxes % num_pairs must be 0 (FOXES_PER_PAIR contiguous)
 cruise_speed = 3.5          # m/s trot (throttle 0)
 boost_speed = 7.8           # m/s sprint/pounce (throttle +1; faster than rabbit flee 6.0)
 stalk_factor = 0.35         # throttle -1 -> cruise * 0.35 ~ 1.22 m/s silent creep
@@ -147,7 +147,39 @@ proximity_radius = 80.0     # NN sensor + proximity score radius
 starve_seconds = 180.0       # no catch for this long -> pair replaced (Moran)
 stalk_hunger_relief = 0.4   # hunger timer slows to this while actively stalking
 mutation_sigma = 0.07       # gaussian noise on offspring pair weights
-hidden_layers = [24, 12]    # fox pair MLP: (12 sensors) -> 24 -> 12 -> (2 outputs)
+hidden_layers = [24, 12]    # fox pair MLP: (15 sensors) -> 24 -> 12 -> (2 outputs)
+wolf_panic_radius = 45.0    # m; foxes sense and evade wolves within this range
+
+[wolves]
+# apex ground predator pairs: 8 wolves, 4 pairs sharing one MLP each.
+# 3 outputs: yaw, throttle, HOWL — a vocal signal every other wolf within
+# howl_radius hears (inputs 9..12), so cooperative pincer hunting can
+# emerge across pair boundaries (assist_radius shares kill rewards with
+# ANY nearby wolf's pair, even a different one).
+num_wolves = 8
+num_pairs = 4               # num_wolves % num_pairs must be 0 (WOLVES_PER_PAIR contiguous)
+cruise_speed = 4.0          # m/s endurance trot (throttle 0; fox cruise is 3.5)
+boost_speed = 7.3           # m/s sprint (throttle +1; faster than rabbit flee 6.0,
+                            # slower than fox top sprint 7.8 — a lone wolf cannot
+                            # run down a boosting fox without stamina wear or a pincer)
+stalk_factor = 0.45         # throttle -1 -> cruise * 0.45 = 1.8 m/s stalk
+yaw_rate = 95.0             # deg/s at NN output +-1 (wider turn than foxes' 140)
+turn_drag = 1.0             # speed bleed on sharp turns
+boost_duration = 4.5        # s of full sprint draining stamina (2.5x a fox's tank)
+boost_recharge = 4.0        # s to refill 0% -> 100%
+boost_cooldown_recover = 1.0  # stamina needed to clear the exhaustion lockout
+catch_radius = 1.5          # m; touch = catch on a fox OR a rabbit
+flee_trigger_radius = 55.0  # m; rabbits detect an approaching wolf at this distance
+proximity_radius = 120.0    # m; prey sensor normalization range
+howl_radius = 250.0         # m; max range at which wolves hear vocal signals
+assist_radius = 35.0        # m; any other wolf here when a kill happens shares the reward
+assist_share = 0.65         # fraction of kill score + hunger relief for assisting pairs
+howl_coop_bonus = 25.0      # extra score when a kill is assisted AND someone was howling
+starve_seconds = 180.0      # 3-minute continuous Moran starvation timer
+mutation_sigma = 0.07       # gaussian noise on offspring pair weights
+hidden_layers = [32, 16]    # wolf pair MLP: (16 sensors) -> 32 -> 16 -> (3 outputs)
+color = [130, 140, 155]     # silver/slate-grey wolf coat
+howl_color = [220, 240, 255]  # ice-blue tint while actively howling |signal| > 0.5
 
 [colors]
 # Entity/mesh/HUD colors: "#rrggbb", "#rrggbbaa" or [r, g, b] / [r, g, b, a]

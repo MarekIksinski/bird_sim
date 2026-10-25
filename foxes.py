@@ -30,6 +30,7 @@ from config import (NUM_FOXES, NUM_PAIRS, FOXES_PER_PAIR, TERRAIN_SIZE,
                     FOX_SPRINT_FLEE_RADIUS, FOX_PROXIMITY_RADIUS,
                     FOX_STARVE_SECONDS, FOX_STALK_HUNGER_RELIEF,
                     FOX_MUTATION_SIGMA, FOX_HIDDEN_LAYERS,
+                    FOX_WOLF_PANIC_RADIUS,
                     RABBIT_FLEE_SPEED, COLOR_FOX)
 import terrain
 from math3d import _q_from_aa_b, _q_mul_b
@@ -37,7 +38,7 @@ from math3d import _q_from_aa_b, _q_mul_b
 _fox_rng = np.random.default_rng(4321)
 _fox_edge = TERRAIN_SIZE / 2 - 10.0          # same arena line rabbits clamp to
 
-# --- pair MLPs: (12 sensors) + hidden + (2 outputs), one per pair ---
+# --- pair MLPs: (15 sensors) + hidden + (2 outputs), one per pair ---
 # 0,1 nearest-rabbit dir on body axes f=(sin yaw, cos yaw), r=(cos yaw,-sin yaw)
 # 2   rabbit distance / FOX_PROXIMITY_RADIUS
 # 3,4 rabbit velocity / RABBIT_FLEE_SPEED on f,r
@@ -46,8 +47,10 @@ _fox_edge = TERRAIN_SIZE / 2 - 10.0          # same arena line rabbits clamp to
 # 9   own speed (-1 stalk .. 0 cruise .. +1 sprint): the fox feels its noise
 # 10  stamina sensor (-1.0 exhausted, else -0.8 + 1.8 * stamina)
 # 11  arena wall repulsion projected on f (within 80m of the edge)
+# 12,13 nearest-WOLF direction on f,r (apex predator evasion)
+# 14  wolf threat proximity (0 safe -> 1 on top of the fox, range FOX_WOLF_PANIC_RADIUS)
 # Outputs: [0] yaw rate (x FOX_YAW_RATE deg/s), [1] throttle (stamina-gated)
-FOX_NET_SHAPE = (12,) + FOX_HIDDEN_LAYERS + (2,)
+FOX_NET_SHAPE = (15,) + FOX_HIDDEN_LAYERS + (2,)
 FOX_GENOME_LEN = sum(FOX_NET_SHAPE[i] * FOX_NET_SHAPE[i+1] +
                      FOX_NET_SHAPE[i+1] for i in range(len(FOX_NET_SHAPE) - 1))
 fox_pair_np = np.arange(NUM_FOXES) // FOXES_PER_PAIR
@@ -155,6 +158,8 @@ def update_foxes():
     global fox_pos, fox_yaw, fox_speed, fox_stamina, fox_exhausted
     global pair_score, pair_survival_time, pair_starvation
     import rabbits   # lazy: rabbits imports THIS module at top level
+    import wolves    # lazy: wolves imports foxes/rabbits (cycle-safe, same
+                     # pattern as the rabbits/predators cross-imports)
 
     dt = min(max(time.dt, 0.0), 0.05)
 
@@ -202,6 +207,15 @@ def update_foxes():
     rep_x = (1.0 - np.clip((_fox_edge - np.abs(fox_pos[:, 0])) / _WALL_SENSOR, 0.0, 1.0)) * -np.sign(fox_pos[:, 0])
     rep_z = (1.0 - np.clip((_fox_edge - np.abs(fox_pos[:, 2])) / _WALL_SENSOR, 0.0, 1.0)) * -np.sign(fox_pos[:, 2])
     obs[:, 11] = rep_x * f2[:, 0] + rep_z * f2[:, 1]
+    # --- wolf threat sensors (apex predator evasion) ---
+    wdiff = wolves.wolf_pos[None, :, :] - fox_pos[:, None, :]     # (F,W,3)
+    wdist = np.linalg.norm(wdiff, axis=2)                         # (F,W)
+    wnear = np.argmin(wdist, axis=1)                              # (F,)
+    d_wolf_min = wdist[np.arange(NUM_FOXES), wnear]
+    wdir2 = wdiff[np.arange(NUM_FOXES), wnear][:, [0, 2]] / np.maximum(d_wolf_min[:, None], 1e-6)
+    obs[:, 12] = np.sum(wdir2 * f2, axis=1)
+    obs[:, 13] = np.sum(wdir2 * r2, axis=1)
+    obs[:, 14] = np.clip(1.0 - d_wolf_min / FOX_WOLF_PANIC_RADIUS, 0.0, 1.0)
     np.clip(obs, -1.0, 1.0, out=obs)
 
     # --- batched pair forward ---
@@ -253,7 +267,11 @@ def update_foxes():
     bonus = stalking.astype(np.float32) * 3.0
     edge_dist = _fox_edge - np.maximum(np.abs(fox_pos[:, 0]), np.abs(fox_pos[:, 2]))
     scrape = (edge_dist < _SCRAPE_MARGIN).astype(np.float32) * 1.5
-    fox_rate = prox + bonus - scrape
+    # survival/evasion bonus: a fox that stays alive INSIDE a wolf's panic
+    # radius out-escapes one that never faced a wolf — pressure toward
+    # evasive steering without making "hide in a corner" optimal.
+    evasion = 2.0 * np.clip(1.0 - d_wolf_min / FOX_WOLF_PANIC_RADIUS, 0.0, 1.0)
+    fox_rate = prox + bonus + evasion - scrape
     pair_score += dt * np.bincount(fox_pair_np, weights=fox_rate, minlength=NUM_PAIRS)
     pair_survival_time += np.float32(dt)
 
@@ -286,6 +304,30 @@ def register_fox_catch(caught_fox_indices):
     np.add.at(pair_kills, pids, 1)
     pair_starvation[pids] = 0.0
     fox_total_catches += int(idx.size)
+
+
+def register_fox_eaten(eaten_fox_indices):
+    """Called by wolves.update_wolves() when a wolf touches a fox: the
+    eaten fox(es) respawn at a random safe arena coordinate (full tank,
+    cruise speed), and their PAIR is punished (+35s starvation, -25 score,
+    floored at 0) so repeatedly-hunted fox pairs drift toward Moran
+    replacement — wolf pressure selects for evasive fox genomes."""
+    idx = np.asarray(eaten_fox_indices)
+    if idx.size == 0:
+        return
+    x = _fox_rng.uniform(-_fox_edge + 20, _fox_edge - 20, idx.size)
+    z = _fox_rng.uniform(-_fox_edge + 20, _fox_edge - 20, idx.size)
+    fox_pos[idx, 0] = x
+    fox_pos[idx, 2] = z
+    fox_pos[idx, 1] = terrain.height_at(x, z)
+    fox_yaw[idx] = _fox_rng.uniform(-np.pi, np.pi, idx.size)
+    fox_speed[idx] = FOX_CRUISE_SPEED
+    fox_stamina[idx] = 1.0
+    fox_exhausted[idx] = False
+    pids = fox_pair_np[idx]
+    np.add.at(pair_starvation, pids, 35.0)
+    np.add.at(pair_score, pids, -25.0)
+    np.maximum(pair_score, 0.0, out=pair_score)
 
 
 def _respawn_pair(P):

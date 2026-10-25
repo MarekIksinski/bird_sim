@@ -235,8 +235,8 @@ BASE_FOV = _get('hawk', 'base_fov', 90.0)
 BOOST_FOV = _get('hawk', 'boost_fov', 110.0)
 
 # --- rabbit constants ---
-NUM_BURROWS = int(_get('rabbits', 'num_burrows', 20))
-NUM_RABBITS = int(_get('rabbits', 'num_rabbits', 100))
+NUM_BURROWS = int(_get('rabbits', 'num_burrows', 45))
+NUM_RABBITS = int(_get('rabbits', 'num_rabbits', 400))
 RABBIT_FLEE_RADIUS = float(_get('rabbits', 'flee_radius', 25.0))      # hawk closer -> Flee
 RABBIT_FREEZE_RADIUS = float(_get('rabbits', 'freeze_radius', 50.0))  # band between -> Freeze
 RABBIT_RECOVER_RADIUS = float(_get('rabbits', 'recover_radius', 30.0))  # hawk farther -> end Flee
@@ -245,8 +245,8 @@ RABBIT_FLEE_SPEED = float(_get('rabbits', 'flee_speed', 6.0))         # m/s spri
 RABBIT_ESCAPE_RADIUS = float(_get('rabbits', 'escape_radius', 1.0))   # dive into burrow below this
 
 # --- fox pairs (ground predators, continuous Moran evolution) ---
-NUM_FOXES = int(_get('foxes', 'num_foxes', 10))
-NUM_PAIRS = int(_get('foxes', 'num_pairs', 5))
+NUM_FOXES = int(_get('foxes', 'num_foxes', 20))
+NUM_PAIRS = int(_get('foxes', 'num_pairs', 10))
 if NUM_PAIRS < 1 or NUM_FOXES % NUM_PAIRS != 0:
     # contiguous pair blocks must split exactly (same policy as NUM_TRIBES)
     _orig = NUM_PAIRS
@@ -267,10 +267,39 @@ FOX_STEALTH_FLEE_RADIUS = float(_get('foxes', 'stealth_flee_radius', 7.5))
 FOX_STEALTH_FREEZE_RADIUS = float(_get('foxes', 'stealth_freeze_radius', 22.0))
 FOX_SPRINT_FLEE_RADIUS = float(_get('foxes', 'sprint_flee_radius', 50.0))
 FOX_PROXIMITY_RADIUS = float(_get('foxes', 'proximity_radius', 80.0))
-FOX_STARVE_SECONDS = float(_get('foxes', 'starve_seconds', 45.0))
+FOX_STARVE_SECONDS = float(_get('foxes', 'starve_seconds', 180.0))
 FOX_STALK_HUNGER_RELIEF = float(_get('foxes', 'stalk_hunger_relief', 0.4))
 FOX_MUTATION_SIGMA = float(_get('foxes', 'mutation_sigma', 0.07))
 FOX_HIDDEN_LAYERS = _hidden_layers('foxes', 'hidden_layers', [24, 12])
+FOX_WOLF_PANIC_RADIUS = float(_get('foxes', 'wolf_panic_radius', 45.0))
+
+# --- wolf pairs (apex ground predators; howl channel + pack-share hunting) ---
+NUM_WOLVES = int(_get('wolves', 'num_wolves', 8))
+NUM_WOLF_PAIRS = int(_get('wolves', 'num_pairs', 4))
+if NUM_WOLF_PAIRS < 1 or NUM_WOLVES % NUM_WOLF_PAIRS != 0:
+    # contiguous pair blocks must split exactly (same policy as NUM_PAIRS)
+    while NUM_WOLF_PAIRS > 1 and NUM_WOLVES % NUM_WOLF_PAIRS != 0:
+        NUM_WOLF_PAIRS -= 1
+    print(f"[wolves] num_pairs adjusted to {NUM_WOLF_PAIRS} so wolves split evenly")
+WOLVES_PER_PAIR = NUM_WOLVES // NUM_WOLF_PAIRS
+WOLF_CRUISE_SPEED = float(_get('wolves', 'cruise_speed', 4.0))
+WOLF_BOOST_SPEED = float(_get('wolves', 'boost_speed', 7.3))
+WOLF_STALK_FACTOR = float(_get('wolves', 'stalk_factor', 0.45))
+WOLF_YAW_RATE = float(_get('wolves', 'yaw_rate', 95.0))
+WOLF_TURN_DRAG = float(_get('wolves', 'turn_drag', 1.0))
+WOLF_BOOST_DURATION = float(_get('wolves', 'boost_duration', 4.5))
+WOLF_BOOST_RECHARGE = float(_get('wolves', 'boost_recharge', 4.0))
+WOLF_BOOST_COOLDOWN_RECOVER = float(_get('wolves', 'boost_cooldown_recover', 1.0))
+WOLF_CATCH_RADIUS = float(_get('wolves', 'catch_radius', 1.5))
+WOLF_FLEE_TRIGGER_RADIUS = float(_get('wolves', 'flee_trigger_radius', 55.0))
+WOLF_PROXIMITY_RADIUS = float(_get('wolves', 'proximity_radius', 120.0))
+WOLF_HOWL_RADIUS = float(_get('wolves', 'howl_radius', 250.0))
+WOLF_ASSIST_RADIUS = float(_get('wolves', 'assist_radius', 35.0))
+WOLF_ASSIST_SHARE = float(_get('wolves', 'assist_share', 0.65))
+WOLF_HOWL_COOP_BONUS = float(_get('wolves', 'howl_coop_bonus', 25.0))
+WOLF_STARVE_SECONDS = float(_get('wolves', 'starve_seconds', 180.0))
+WOLF_MUTATION_SIGMA = float(_get('wolves', 'mutation_sigma', 0.07))
+WOLF_HIDDEN_LAYERS = _hidden_layers('wolves', 'hidden_layers', [32, 16])
 
 # --- 1e. COLORS ([colors] section; 0..255 per channel, a defaults to 255) ---
 # Values are plain tuples (r,g,b,a) 0..255 so config.py stays Ursina-free;
@@ -311,3 +340,7 @@ COLOR_ROCK       = _color('colors', 'rock',       (100, 105, 115))
 COLOR_HUD_INFO   = _color('colors', 'hud_info',   (255, 255, 255, 120))
 COLOR_HUD_GEN    = _color('colors', 'hud_gen',    (255, 220, 120, 200))
 COLOR_HUD_KILLS  = _color('colors', 'hud_kills',  (255, 0, 0))
+# wolf coat + howl highlight live in [wolves] (not [colors]): section-local
+# tunables alongside the rest of the wolf block (parsed after _color exists).
+COLOR_WOLF      = _color('wolves', 'color',      (130, 140, 155))
+COLOR_WOLF_HOWL = _color('wolves', 'howl_color', (220, 240, 255))

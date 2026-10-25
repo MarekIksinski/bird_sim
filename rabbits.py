@@ -17,10 +17,11 @@ from config import (NUM_BURROWS, NUM_RABBITS, RABBIT_FLEE_RADIUS,
                     FOX_STEALTH_FLEE_RADIUS,
                     FOX_STEALTH_FREEZE_RADIUS, FOX_SPRINT_FLEE_RADIUS,
                     FOX_CATCH_RADIUS, FOX_BOOST_SPEED, FOX_CRUISE_SPEED,
-                    FOX_STALK_FACTOR, COLOR_RABBIT)
+                    FOX_STALK_FACTOR, WOLF_FLEE_TRIGGER_RADIUS, COLOR_RABBIT)
 import predators
 import player
 import foxes
+import wolves
 import terrain
 
 _rabbit_rng = np.random.default_rng()
@@ -76,7 +77,14 @@ def update_rabbits():
             * ((RABBIT_FREEZE_RADIUS - RABBIT_FLEE_RADIUS)
                / np.maximum(eff_freeze_r[None, :] - eff_flee_r[None, :], 1e-6))))
     d_fox = d_fox_perceived.min(axis=1)
-    d = np.minimum(np.minimum(d_pack, d_player), d_fox)
+    # --- wolf threats: an approaching wolf triggers Flee at
+    # WOLF_FLEE_TRIGGER_RADIUS (55m). Wolves are loud but slower than a
+    # sprinting fox, so no stealth ramp: linearly rescale the raw distance
+    # so 55m maps onto RABBIT_FLEE_RADIUS and the existing state-machine
+    # thresholds (flee/freeze/recover) work unchanged. ---
+    d_wolf_raw = np.linalg.norm(rabbit_pos[:, None, :] - wolves.wolf_pos[None, :, :], axis=2)  # (R,Wf)
+    d_wolf = (d_wolf_raw * (RABBIT_FLEE_RADIUS / WOLF_FLEE_TRIGGER_RADIUS)).min(axis=1)
+    d = np.minimum(np.minimum(np.minimum(d_pack, d_player), d_fox), d_wolf)
 
     # --- fox catches: any rabbit a fox literally touches is eaten; the
     # rabbit respawns Frozen at a random burrow (like the burrow escape),

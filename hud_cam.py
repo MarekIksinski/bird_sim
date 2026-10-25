@@ -20,6 +20,7 @@ import terrain
 import predators
 import flock
 import foxes
+import wolves
 import player
 
 hawk_info = None
@@ -30,14 +31,15 @@ _last_gen_line = ''
 # --- 5. CAMERA ---
 # config start_camera: 1 fixed wide, 2 pack chase (best hawk), 3 first-person
 # (selected), 4 player chase cam, 5 player first-person cam,
-# 6 fox chase cam, 7 fox first-person cam
-curr_mode = max(0, min(6, START_CAMERA - 1))
+# 6 fox chase cam, 7 fox first-person cam,
+# 8 wolf chase cam, 9 wolf first-person cam
+curr_mode = max(0, min(8, START_CAMERA - 1))
 
 def init_hud_and_camera():
     """Create the HUD Text objects and set the initial camera pose.
     Call only AFTER app = Ursina(...) exists."""
     global hawk_info, gen_text, kill_counter
-    hawk_info = Text('1-3 Hawk cams  4/5 Player cams  6/7 Fox cams  WASD/QE/Shift/Ctrl fly  TAB cycle  ESC quit',
+    hawk_info = Text('1-3 Hawk cams  4/5 Player cams  6/7 Fox cams  8/9 Wolf cams  WASD/QE/Shift/Ctrl fly  TAB cycle  ESC quit',
                      origin=(0, 0), y=-0.45, size=0.035, color=color.rgba32(*COLOR_HUD_INFO))
     gen_text = Text('Gen: 1 | Time: 0.0s | Best Kills: 0', origin=(0, 0), y=-0.38, size=0.045,
                     color=color.rgba32(*COLOR_HUD_GEN))
@@ -58,14 +60,19 @@ def handle_input(key):
     if key == '5': curr_mode = 4   # player first-person cam
     if key == '6': curr_mode = 5   # fox chase cam
     if key == '7': curr_mode = 6   # fox first-person cam
+    if key == '8': curr_mode = 7   # wolf chase cam
+    if key == '9': curr_mode = 8   # wolf first-person cam
     if key in config.PLAYER_KEYS['reset']:
         player.reset_player()
     if key == 'tab':
         # context-aware: in the fox cams TAB cycles the tracked fox,
-        # everywhere else it cycles the AI hawk
+        # in the wolf cams the tracked wolf, everywhere else the AI hawk
         if curr_mode in (5, 6):
             foxes.sel_fox_idx = (foxes.sel_fox_idx + 1) % config.NUM_FOXES
             foxes.sel_used = True
+        elif curr_mode in (7, 8):
+            wolves.sel_wolf_idx = (wolves.sel_wolf_idx + 1) % config.NUM_WOLVES
+            wolves.sel_used = True
         else:
             predators.sel_idx = (predators.sel_idx + 1) % POPULATION_SIZE
     if key == 'escape': application.base.userExit()
@@ -91,13 +98,24 @@ def update_camera_and_hud():
         _fox_trk = foxes.sel_fox_idx if foxes.sel_used else foxes.best_fox_idx
     else:
         _fox_trk = foxes.best_fox_idx
-    # --- speed FOV warp on the tracked hawk/fox ---
+    # the wolf tracked by the wolf cams (mode 7: best, or TAB-cycled once
+    # used; mode 8: always the TAB-cycled wolf) — mirrors the fox cams
+    if curr_mode == 8:
+        _wolf_trk = wolves.sel_wolf_idx
+    elif curr_mode == 7:
+        _wolf_trk = wolves.sel_wolf_idx if wolves.sel_used else wolves.best_wolf_idx
+    else:
+        _wolf_trk = wolves.best_wolf_idx
+    # --- speed FOV warp on the tracked hawk/fox/wolf ---
     if curr_mode in (3, 4):
         _spd = player.player_speed
         _cruise, _boost = config.PLAYER_CRUISE_SPEED, config.PLAYER_BOOST_SPEED
     elif curr_mode in (5, 6):
         _spd = float(foxes.fox_speed[_fox_trk])
         _cruise, _boost = config.FOX_CRUISE_SPEED, config.FOX_BOOST_SPEED
+    elif curr_mode in (7, 8):
+        _spd = float(wolves.wolf_speed[_wolf_trk])
+        _cruise, _boost = config.WOLF_CRUISE_SPEED, config.WOLF_BOOST_SPEED
     else:
         track = predators.sel_idx if curr_mode == 2 else predators.best_idx
         _spd = float(predators.pack_speed[track])
@@ -200,6 +218,40 @@ def update_camera_and_hud():
         q_cur = np.array([cq[1], cq[2], cq[3], cq[0]])                  # (w,x,y,z) -> (x,y,z,w)
         q_out = _slerp_np(q_cur, q_fox, min(cdt * 10.0, 1.0))
         camera.quaternion = PQuat(q_out[3], q_out[0], q_out[1], q_out[2])
+    elif curr_mode == 7:
+        # wolf chase cam: same shape as the fox chase cam (mode 5) but
+        # tracking a ground wolf with the terrain-slope-tilted wolf_quat()
+        target_pos = wolves.wolf_pos[_wolf_trk].copy()
+        target_pos[1] += (abs(np.sin(wolves.wolf_hop_phase[_wolf_trk]))
+                          * min(float(wolves.wolf_speed[_wolf_trk]) / wolves.WOLF_BOOST_SPEED, 1.0) * 0.6)
+        q_wolf = wolves.wolf_quat(_wolf_trk)
+        off_b = np.array([0.0, 2.2, -6.5])   # body frame (r, u, f): above+behind
+        off = _q_rot_b(q_wolf[None, :], off_b[None, :])[0]
+        wanted_pos = Vec3(*(target_pos + off))
+        camera.position = lerp(camera.position, wanted_pos, min(cdt * 6, 1.0))
+        # keep the chase camera out of the terrain (reassign the WHOLE
+        # Vec3: camera.position returns a fresh copy, so .y = would be lost)
+        cam_ground = float(terrain.height_at(camera.position.x, camera.position.z))
+        if camera.position.y < cam_ground + 1.4:
+            camera.position = Vec3(camera.position.x, cam_ground + 1.4, camera.position.z)
+        cq = camera.quaternion
+        q_cur = np.array([cq[1], cq[2], cq[3], cq[0]])                  # (w,x,y,z) -> (x,y,z,w)
+        q_out = _slerp_np(q_cur, q_wolf, min(cdt * 4.0, 1.0))
+        camera.quaternion = PQuat(q_out[3], q_out[0], q_out[1], q_out[2])
+    elif curr_mode == 8:
+        # wolf first-person cam: sits 1.4m AHEAD of the nose tip (dart nose
+        # is at z=1.3) so the camera never clips inside the batched wolf mesh
+        pos = wolves.wolf_pos[_wolf_trk].copy()
+        pos[1] += (abs(np.sin(wolves.wolf_hop_phase[_wolf_trk]))
+                   * min(float(wolves.wolf_speed[_wolf_trk]) / wolves.WOLF_BOOST_SPEED, 1.0) * 0.6)
+        q_wolf = wolves.wolf_quat(_wolf_trk)
+        fwd = _q_rot_b(q_wolf[None, :], np.array([0.0, 0.0, 1.0]))[0]
+        up = _q_rot_b(q_wolf[None, :], np.array([0.0, 1.0, 0.0]))[0]
+        camera.position = Vec3(*(pos + fwd * 1.4 + up * 0.55))
+        cq = camera.quaternion
+        q_cur = np.array([cq[1], cq[2], cq[3], cq[0]])                  # (w,x,y,z) -> (x,y,z,w)
+        q_out = _slerp_np(q_cur, q_wolf, min(cdt * 10.0, 1.0))
+        camera.quaternion = PQuat(q_out[3], q_out[0], q_out[1], q_out[2])
     # HUD
     # stamina readout for the currently tracked hawk: player in modes 3/4,
     # otherwise the chase/FP AI hawk (sel_idx in FP mode 2, best hawk in 0/1).
@@ -209,17 +261,22 @@ def update_camera_and_hud():
     elif curr_mode in (5, 6):
         _stam = float(foxes.fox_stamina[_fox_trk])
         _cool = bool(foxes.fox_exhausted[_fox_trk])
+    elif curr_mode in (7, 8):
+        _stam = float(wolves.wolf_stamina[_wolf_trk])
+        _cool = bool(wolves.wolf_exhausted[_wolf_trk])
     else:
         _trk = predators.sel_idx if curr_mode == 2 else predators.best_idx
         _stam, _cool = float(predators.pack_stamina[_trk]), bool(predators.pack_exhausted[_trk])
     _line = (f'Gen: {predators.generation} | Time: {GENERATION_SECONDS - predators.gen_elapsed:.1f}s | '
              f'Best Kills: {int(predators.gen_kills[predators.best_idx])} | Flock Evo: {flock.starling_evolutions} | '
-             f'Fox Evo: {foxes.fox_evolutions} | '
+             f'Fox Evo: {foxes.fox_evolutions} | Wolf Evo: {wolves.wolf_evolutions} | '
              f'Stamina: {int(round(_stam * 100))}%' + (' [COOL]' if _cool else ''))
     if _line != _last_gen_line:
         _last_gen_line = _line
         gen_text.text = _line
     _catch_line = (f'catches: {predators.total_catches} (you: {player.player_catches}) '
-                   f'| foxes: {foxes.fox_total_catches}')
+                   f'| foxes: {foxes.fox_total_catches} '
+                   f'| wolves: {wolves.wolf_fox_catches}f+{wolves.wolf_rabbit_catches}r '
+                   f'(coop: {wolves.wolf_coop_kills})')
     if kill_counter.text != _catch_line:
         kill_counter.text = _catch_line

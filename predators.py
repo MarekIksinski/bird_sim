@@ -123,6 +123,7 @@ _CKPT = os.path.join(EVOLVE_DIR, 'population.npz')
 _HISTORY = os.path.join(EVOLVE_DIR, 'history.csv')
 _STARLING_CKPT = os.path.join(EVOLVE_DIR, 'starling_tribes.npz')
 _FOX_CKPT = os.path.join(EVOLVE_DIR, 'fox_pairs.npz')
+_WOLF_CKPT = os.path.join(EVOLVE_DIR, 'wolf_pairs.npz')
 _LOG_FILE = os.path.join(EVOLVE_DIR, 'evolution.log')
 
 def log_event(msg):
@@ -212,6 +213,24 @@ def _load_checkpoint_state():
                 print(f"[persist] {foxes.fox_evolutions} fox pair evolutions resumed")
         except Exception as e:
             print(f"[persist] could not load fox checkpoint ({e}); pairs start fresh")
+    # wolf pair genomes (separate file, own shape guard)
+    if os.path.exists(_WOLF_CKPT):
+        try:
+            import wolves   # lazy: wolves imports rabbits/foxes above it
+            s = np.load(_WOLF_CKPT)
+            pp = s['pair_pop']
+            if pp.shape != (wolves.NUM_WOLF_PAIRS, wolves.WOLF_GENOME_LEN):
+                print(f"[persist] wolf checkpoint shape {pp.shape} != config "
+                      f"({wolves.NUM_WOLF_PAIRS},{wolves.WOLF_GENOME_LEN}); pairs start fresh")
+            else:
+                wolves.pair_pop = pp.astype(np.float32)
+                wolves.wolf_evolutions = int(s['wolf_evolutions'])
+                wolves.wolf_fox_catches = int(s['wolf_fox_catches'])
+                wolves.wolf_rabbit_catches = int(s['wolf_rabbit_catches'])
+                wolves.wolf_coop_kills = int(s['wolf_coop_kills'])
+                print(f"[persist] {wolves.wolf_evolutions} wolf pair evolutions resumed")
+        except Exception as e:
+            print(f"[persist] could not load wolf checkpoint ({e}); pairs start fresh")
 
 def save_checkpoint():
     """Persist the CURRENT population under the CURRENT generation number.
@@ -234,6 +253,12 @@ def save_checkpoint():
         np.savez(_FOX_CKPT, pair_pop=foxes.pair_pop,
                  fox_evolutions=foxes.fox_evolutions,
                  fox_total_catches=foxes.fox_total_catches)
+        import wolves   # lazy: the wolf pair checkpoint lives in wolves' state
+        np.savez(_WOLF_CKPT, pair_pop=wolves.pair_pop,
+                 wolf_evolutions=wolves.wolf_evolutions,
+                 wolf_fox_catches=wolves.wolf_fox_catches,
+                 wolf_rabbit_catches=wolves.wolf_rabbit_catches,
+                 wolf_coop_kills=wolves.wolf_coop_kills)
     except Exception as e:
         print(f"[persist] could not save checkpoint ({e})")
 

@@ -48,10 +48,12 @@ for key, const in [('cruise_speed', 'FOX_CRUISE_SPEED'), ('boost_speed', 'FOX_BO
                    ('mutation_sigma', 'FOX_MUTATION_SIGMA')]:
     assert getattr(config, const) == float(fx[key]), (key, const)
 assert config.FOX_HIDDEN_LAYERS == tuple(fx['hidden_layers'])
-assert int(rb['num_rabbits']) == 200 and int(rb['num_burrows']) == 30
-assert config.NUM_RABBITS == 200 and config.NUM_BURROWS == 30
+# rabbit counts derived FROM the toml (user tunes it live — never hardcode)
+assert config.NUM_RABBITS == int(rb['num_rabbits'])
+assert config.NUM_BURROWS == int(rb['num_burrows'])
+assert config.FOX_WOLF_PANIC_RADIUS == float(fx['wolf_panic_radius'])
 
-import rabbits, foxes, predators
+import rabbits, foxes, predators, wolves
 
 # fixed clock: offscreen (no Ursina app) time.dt is ~0 and every dt-scaled
 # soak would freeze; pin 60 FPS like verify_arena does
@@ -61,13 +63,13 @@ class _Clock:
         return 0.0
 rabbits.time = _Clock()
 foxes.time = _Clock()
-assert foxes.FOX_NET_SHAPE == (12,) + config.FOX_HIDDEN_LAYERS + (2,), foxes.FOX_NET_SHAPE
+assert foxes.FOX_NET_SHAPE == (15,) + config.FOX_HIDDEN_LAYERS + (2,), foxes.FOX_NET_SHAPE
 exp = sum(foxes.FOX_NET_SHAPE[i] * foxes.FOX_NET_SHAPE[i+1] + foxes.FOX_NET_SHAPE[i+1]
           for i in range(len(foxes.FOX_NET_SHAPE) - 1))
 assert foxes.FOX_GENOME_LEN == exp
 assert foxes.pair_pop.shape == (config.NUM_PAIRS, exp)
 assert len(foxes.pair_Ws) == len(foxes.FOX_NET_SHAPE) - 1
-assert foxes.pair_Ws[0].shape == (config.NUM_PAIRS, 12, config.FOX_HIDDEN_LAYERS[0])
+assert foxes.pair_Ws[0].shape == (config.NUM_PAIRS, 15, config.FOX_HIDDEN_LAYERS[0])
 print(f'PASS config+shapes: FOX_NET_SHAPE={foxes.FOX_NET_SHAPE} FGL={exp} '
       f'pairs={config.NUM_PAIRS}x{config.FOXES_PER_PAIR}')
 # initial hunger clocks are STAGGERED (0..20s), never all-zero: synchronized
@@ -83,9 +85,14 @@ predators._CKPT = os.path.join(tmp, 'population.npz')
 predators._HISTORY = os.path.join(tmp, 'history.csv')
 predators._STARLING_CKPT = os.path.join(tmp, 'starling_tribes.npz')
 predators._FOX_CKPT = os.path.join(tmp, 'fox_pairs.npz')
+predators._WOLF_CKPT = os.path.join(tmp, 'wolf_pairs.npz')
 predators._LOG_FILE = os.path.join(tmp, 'evolution.log')
 
 edge = config.TERRAIN_SIZE / 2 - 10.0
+# park the wolves far from everything: their threat must never leak into
+# the fox/rabbit assertions below
+wolves.wolf_pos[:] = np.array([[-edge + 1, 0.0, -edge + 1]], dtype=np.float32)
+wolves.wolf_speed[:] = 0.0
 
 # --- 2. physics soak: pin foxes against the +X wall at full sprint ---
 soak = 300
@@ -203,26 +210,27 @@ foxes.pair_pop[:] = save_pop
 foxes._upload_pair_layers()
 base = foxes.pair_pop.copy()
 foxes.pair_survival_time[:] = 100.0
-foxes.pair_score[:] = np.array([200.0, 10.0, 5.0, 1.0, 0.5], dtype=np.float32)
+# descending score rates: pair 0 is the top parent (derive length from config)
+foxes.pair_score[:] = (np.arange(config.NUM_PAIRS, 0, -1) * 40.0).astype(np.float32)
 foxes.pair_starvation[:] = 0.0
 # TWO pairs over the threshold: only the MOST starved gets replaced
-foxes.pair_starvation[3] = config.FOX_STARVE_SECONDS + 1.0
-foxes.pair_starvation[4] = config.FOX_STARVE_SECONDS + 5.0
+foxes.pair_starvation[config.NUM_PAIRS - 2] = config.FOX_STARVE_SECONDS + 1.0
+foxes.pair_starvation[config.NUM_PAIRS - 1] = config.FOX_STARVE_SECONDS + 5.0
 foxes.fox_evolutions = 0
 foxes._pair_starve_check()
 assert foxes.fox_evolutions == 1
-assert not np.array_equal(foxes.pair_pop[4], base[4])   # most starved replaced
-assert np.array_equal(foxes.pair_pop[3], base[3])       # runner-up untouched
-delta = foxes.pair_pop[4] - base[0]   # child = top-rate parent (pair 0) + noise
+assert not np.array_equal(foxes.pair_pop[config.NUM_PAIRS - 1], base[config.NUM_PAIRS - 1])   # most starved replaced
+assert np.array_equal(foxes.pair_pop[config.NUM_PAIRS - 2], base[config.NUM_PAIRS - 2])       # runner-up untouched
+delta = foxes.pair_pop[config.NUM_PAIRS - 1] - base[0]   # child = top-rate parent (pair 0) + noise
 assert 0 < np.std(delta) < 0.3
-assert foxes.pair_score[4] == 0.0 and foxes.pair_survival_time[4] == 0.0
-assert 0.0 <= foxes.pair_starvation[4] <= 10.0          # staggered re-entry
-assert np.all(np.abs(foxes.fox_pos[8:10, 0]) <= edge)
+assert foxes.pair_score[config.NUM_PAIRS - 1] == 0.0 and foxes.pair_survival_time[config.NUM_PAIRS - 1] == 0.0
+assert 0.0 <= foxes.pair_starvation[config.NUM_PAIRS - 1] <= 10.0          # staggered re-entry
+assert np.all(np.abs(foxes.fox_pos[-2:, 0]) <= edge)
 log = open(os.path.join(tmp, 'evolution.log')).read()
-assert '[fox_nn] pair 4 replaced by parent 0' in log, log
+assert f'[fox_nn] pair {config.NUM_PAIRS - 1} replaced by parent 0' in log, log
 # fresh layers uploaded: einsum forward matches per-pair loop form
-obs = np.random.default_rng(7).uniform(-1, 1, (config.NUM_FOXES, 12)).astype(np.float32)
-a = obs.reshape(config.NUM_PAIRS, config.FOXES_PER_PAIR, 12)
+obs = np.random.default_rng(7).uniform(-1, 1, (config.NUM_FOXES, 15)).astype(np.float32)
+a = obs.reshape(config.NUM_PAIRS, config.FOXES_PER_PAIR, 15)
 for W, b in zip(foxes.pair_Ws, foxes.pair_bs):
     a = np.tanh(np.einsum('pfi,pio->pfo', a, W) + b[:, None, :])
 ref = np.empty((config.NUM_FOXES, 2), dtype=np.float32)

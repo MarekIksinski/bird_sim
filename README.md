@@ -196,7 +196,8 @@ config.py     config.toml -> all uppercase constants + derived values
 math3d.py     pure NumPy batched quaternion math (_q_mul_b, _slerp_np, ...)
 terrain.py    heightmaps + height_at at import; sky/triplanar terrain/
               backdrop + props (80 Tree.glb model trees, 120
-              valley bushes, 100 slope/backdrop rocks) via init_environment()
+              valley bushes, 100 rocks in 14 Rocks.blend GLB variants)
+              via init_environment()
 predators.py  hawk pack state, neuroevolution, flight physics, checkpoints
 flock.py      starling state, tribe NNs, update_boids_gpu, FlockVisuals
 rabbits.py    ground-prey FSM, update_rabbits, RabbitVisuals
@@ -327,11 +328,16 @@ main.py       entrypoint orchestrator (init order + global input/update)
   at backdrop lattice vertices. Run: `.venv/bin/python tools/verify_terrain_backdrop.py`
 - `tools/verify_props.py` — props gate: exact counts (80 GLB model trees —
   falls back to 80 procedural trunk+crown pairs if `tree_model = ""` or the
-  asset is missing — 120 valley bushes, 100 slope/backdrop rocks), prop
+  asset is missing — 120 valley bushes, 100 GLB rock variants — fall back to
+  cube/sphere blocks if `rock_model_dir = ""`), prop
   bases flush on `height_at()` (rocks sunk 0.4x height by design), roost
   clearing respected, bushes only in low valleys, crowns atop trunks, and
   prop-scattering startup time <2s (terrain/backdrop mesh builders stubbed).
   Run: `.venv/bin/python tools/verify_props.py`
+- `tools/export_rocks.py` — re-exports `assets/rocks/rock_NN.glb` (14
+  variants) from `assets/Rocks.blend` with Blender headless (transforms
+  baked, authoring offsets zeroed). Run: `blender --background --python
+  tools/export_rocks.py`
 - `tools/verify_visuals.py` — visuals gate: terrain carries the patched
   triplanar shader (stock `.rgba` bug gone, fog + cast_shadows present,
   the hard `N.y > 0` cut replaced by the smoothstep blend, `[visuals]`

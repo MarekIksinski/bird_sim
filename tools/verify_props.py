@@ -49,13 +49,14 @@ props = [e for e in scene.entities if e not in (terrain.terrain, terrain.backdro
 def _c3(e):
     return (round(e.color[0] * 255), round(e.color[1] * 255), round(e.color[2] * 255))
 trees = [e for e in props if e.model.getName() == 'Tree']
+rock_glbs = [e for e in props if str(e.model.getName()).startswith('rock_')]
 _box = lambda e: str(e.model.getName()) in ('cube', 'sphere')
 trunks = [e for e in props if _box(e) and _c3(e) == (90, 60, 40)]
 crowns = [e for e in props if _box(e) and _c3(e) == (40, 90, 45)]
 bushes = [e for e in props if _box(e) and _c3(e) == (60, 110, 50)]
 rocks  = [e for e in props if _box(e) and _c3(e) == (100, 105, 115)]
 print(f"STEP2 counts: trees(GLB)={len(trees)} trunks={len(trunks)} crowns={len(crowns)} "
-      f"bushes={len(bushes)} rocks={len(rocks)}")
+      f"bushes={len(bushes)} rocks={len(rocks)} rocks(GLB)={len(rock_glbs)}")
 if trees:
     # GLB path: one entity per tree, no procedural trunk/crown boxes
     assert len(trees) == 80, "tree count wrong"
@@ -63,7 +64,9 @@ if trees:
 else:
     assert len(trunks) == 80 and len(crowns) == 80, "tree counts wrong"
 assert len(bushes) == 120, "bush count wrong"
-assert len(rocks) == 100, "rock count wrong"
+assert len(rocks) + len(rock_glbs) == 100, "rock count wrong"
+if rock_glbs:
+    assert len(rock_glbs) == 100, "GLB rock count wrong"
 
 # flushness: prop BASES vs ground (crowns sit on trunks, excluded from base check)
 worst = 0.0
@@ -93,6 +96,21 @@ for e in bushes:
 for e in rocks:
     h = float(terrain.height_at(e.x, e.z))
     assert abs((e.y - e.scale_y/2) - h + 0.4*e.scale_y) < 0.01, f"rock not anchored {e}"
+if rock_glbs:
+    # GLB rocks: base sunk 0.4*s below ground; recompute from model bounds
+    from ursina.mesh_importer import load_model as _lm
+    from pathlib import Path as _P
+    import config as _cfg
+    for e in rock_glbs:
+        mn, mx = e.model.getTightBounds()
+        y0, y1 = float(mn[1]), float(mx[1])
+        s = e.scale_x * (y1 - y0)     # model height == s (uniform scale)
+        h = float(terrain.height_at(e.x, e.z))
+        base = e.y + y0 * e.scale_x
+        off = base - h
+        assert abs(off + 0.4 * s) < 0.01, f"GLB rock not anchored (off={off:.2f}) {e}"
+        assert 1.4 <= s <= 4.1, f"GLB rock height out of range: {s:.2f}"
+    print(f"STEP3b GLB rock anchoring OK ({len(rock_glbs)} sunk 0.4*s)")
 
 # roost clearing: no tree/bush inside the bowl
 for e in (trees + trunks + crowns):

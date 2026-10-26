@@ -193,6 +193,7 @@ triplanar_grass_blend_start = 0.25   # surface normal N.y below this -> full roc
 triplanar_grass_blend_end = 0.75     # N.y above this -> full grass; the band between cross-fades gradually
 tree_model = "Tree"                  # assets/Tree.glb (Trunk+Leaves); "" = procedural trunk+crown boxes
 tree_scale_range = [0.35, 0.75]      # per-tree uniform scale range (GLB is ~10m tall; 0.35-0.75 -> 3.5-7.5m)
+rock_model_dir = "rocks"             # assets/rocks/rock_NN.glb variants (from Rocks.blend; "" = cube/sphere fallback)
 shadow_map_size = 2048               # sun shadow map resolution (px)
 shadow_bias = 0.005                  # depth offset; kills shadow acne on low-poly hills
 # sprint dust pips for ground predators (foxes/wolves)

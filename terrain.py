@@ -23,7 +23,7 @@ from config import (TERRAIN_SIZE, TERRAIN_CELL, TERRAIN_RES, TERRAIN_AMP,
                     TRIPLANAR_SIDE_TEXTURE_SCALE_X, TRIPLANAR_SIDE_TEXTURE_SCALE_Y,
                     TRIPLANAR_BLEND_ZONE, TRIPLANAR_GRASS_BLEND_START,
                     TRIPLANAR_GRASS_BLEND_END,
-                    TREE_MODEL, TREE_SCALE_RANGE)
+                    TREE_MODEL, TREE_SCALE_RANGE, ROCK_MODEL_DIR)
 
 
 def _smooth(t):
@@ -528,8 +528,12 @@ def init_environment():
                position=(x, h + 0.25, z), y_rotation=rng.uniform(0, 360))
 
     # 3. Rocks/boulders — steeper slopes (central-difference gradient) OR the
-    #    backdrop mountain skirts (r > 35% of field size). Anchored by sinking
-    #    the block ~40% of its height into the ground.
+    #    backdrop mountain skirts (r > 35% of field size). GLB variants from
+    #    assets/rocks/ (14 shapes exported from assets/Rocks.blend via
+    #    tools/export_rocks.py), one picked at random per rock, uniformly
+    #    scaled so the model height matches the old s (1.5-4m), anchored by
+    #    sinking the base ~40% of that height into the ground. Falls back to
+    #    the old cube/sphere blocks if the assets are missing.
     def _slope(x, z):
         e = 4.0
         dhx = height_at(x + e, z) - height_at(x - e, z)
@@ -538,9 +542,36 @@ def init_environment():
 
     rock_pts = _scatter(100, lambda x, z, h:
                         (_slope(x, z) > 0.35) | (r_of(x, z) > TERRAIN_SIZE * 0.35))
+    rock_models = []
+    if ROCK_MODEL_DIR:
+        try:
+            from ursina.mesh_importer import load_model
+            rocks_dir = Path(__file__).resolve().parent / 'assets' / ROCK_MODEL_DIR
+            for i in range(1, 100):
+                name = f'rock_{i:02d}'
+                probe = load_model(name, folder=rocks_dir)
+                if probe is None:
+                    break
+                mn, mx = probe.getTightBounds()
+                rock_models.append((name, float(mn[1]), float(mx[1])))
+        except Exception:
+            rock_models = []
+        if not rock_models:
+            print(f"[terrain] rock models in assets/{ROCK_MODEL_DIR}/ unavailable; "
+                  "falling back to cube/sphere rocks")
     for x, z in rock_pts:
         h = float(height_at(x, z))
         s = rng.uniform(1.5, 4.0)
+        if rock_models:
+            name, y0, y1 = rock_models[int(rng.integers(len(rock_models)))]
+            f = s / (y1 - y0)   # uniform scale so model height == s
+            r = Entity(model=load_model(name, folder=rocks_dir),
+                       color=color.rgba32(*COLOR_ROCK), scale=f,
+                       position=(x, h - 0.4 * s - y0 * f, z))
+            r.model.name = name   # ursina names GLB roots 'Scene'; identify per-variant
+            r.y_rotation = rng.uniform(0, 360)
+            r.x_rotation = rng.uniform(-8, 8)
+            continue
         rock_model = 'cube' if rng.random() < 0.7 else 'sphere'
         rock = Entity(model=rock_model, color=color.rgba32(*COLOR_ROCK),
                       scale=(s * rng.uniform(0.8, 1.2), s, s * rng.uniform(0.8, 1.2)),

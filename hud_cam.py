@@ -43,7 +43,7 @@ def init_hud_and_camera():
                      origin=(0, 0), y=-0.45, size=0.035, color=color.rgba32(*COLOR_HUD_INFO))
     gen_text = Text('Gen: 1 | Time: 0.0s | Best Kills: 0', origin=(0, 0), y=-0.38, size=0.045,
                     color=color.rgba32(*COLOR_HUD_GEN))
-    kill_counter = Text('catches: 0', origin=(0, 0), x=-0.9, y=-0.45, size=0.05,
+    kill_counter = Text('catches: 0', origin=(0, 0), x=0, y=0.42, size=0.05,
                         color=color.rgba32(*COLOR_HUD_KILLS))
     camera.position = (0, 35, -45)
 

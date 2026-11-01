@@ -30,7 +30,7 @@ from config import (POPULATION_SIZE, NUM_BIRDS, MUTATION_TINY,
                     STALL_SPEED, LIFT_GRIP, INDUCED_DRAG,
                     BOOST_DURATION, BOOST_RECHARGE, BOOST_COOLDOWN_RECOVER,
                     HAWK_HIDDEN_LAYERS, COLOR_HAWK_GOLD, COLOR_HAWK_BRIGHT,
-                    COLOR_HAWK_MUTED)
+                    COLOR_HAWK_MUTED, HAWK_NIGHT_SPEED_MULT)
 import daynight
 import terrain
 from math3d import _q_mul_b, _q_from_aa_b, _q_rot_b
@@ -549,9 +549,15 @@ def update_predators(layers, pos_np, vel_np):
     raw_thr = out[:, 3]
     thr = np.where(pack_exhausted | (pack_stamina <= 0.0),
                    np.minimum(raw_thr, 0.0), raw_thr)
+    # --- night ecology (hard, not learned): diurnal hunters are physically
+    # handicapped after dark — cruise/boost speed TARGETS scale down toward
+    # HAWK_NIGHT_SPEED_MULT at midnight (gravity stoops, braking and the
+    # stamina system untouched). NNs can still learn to hunt by dark, but
+    # it costs them airspeed. ---
+    night_spd = 1.0 + (HAWK_NIGHT_SPEED_MULT - 1.0) * daynight.night_factor()
     target = np.where(thr >= 0,
-                      CRUISE_SPEED + thr * (PRED_BOOST - CRUISE_SPEED),
-                      CRUISE_SPEED * (1.0 + thr * (1.0 - SLOW_FACTOR)))
+                      (CRUISE_SPEED + thr * (PRED_BOOST - CRUISE_SPEED)) * night_spd,
+                      CRUISE_SPEED * (1.0 + thr * (1.0 - SLOW_FACTOR)) * night_spd)
     # --- stamina drain / recharge / exhaustion lockout (rates are per REAL
     # second, so they use the capped adt like every other time term) ---
     burn_rate = 1.0 / max(BOOST_DURATION, 1e-6)

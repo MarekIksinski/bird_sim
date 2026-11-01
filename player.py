@@ -26,6 +26,7 @@ from ursina import Entity, Vec3, color, time, held_keys
 from panda3d.core import Quat as PQuat
 
 import config
+import daynight
 import terrain
 from math3d import _q_mul_b, _q_from_aa_b, _q_rot_b
 
@@ -106,6 +107,9 @@ def update_player():
     yaw_in = (_held('yaw_right') - _held('yaw_left')) + (-config.PLAYER_AUTO_COORD * roll_in)
     # throttle: Shift boost / nothing cruise / Ctrl slow
     thr = _held('boost') - _held('slow')
+    # night handicap mirror of update_predators: speed targets scale down
+    # toward HAWK_NIGHT_SPEED_MULT at midnight
+    _night_spd = 1.0 + (config.HAWK_NIGHT_SPEED_MULT - 1.0) * daynight.night_factor()
     # --- BOOST STAMINA GATE (exact mirror of update_predators): an
     # exhausted player cannot push positive throttle — gliding and braking
     # stay available and gravity stoops still accelerate. ---
@@ -195,9 +199,9 @@ def update_player():
     # drag decay (0.8) above the target so dive momentum carries through
     # the swoop, snappier thrust (1.5) below it. ---
     if thr >= 0:
-        target = config.PLAYER_CRUISE_SPEED + thr * (config.PLAYER_BOOST_SPEED - config.PLAYER_CRUISE_SPEED)
+        target = (config.PLAYER_CRUISE_SPEED + thr * (config.PLAYER_BOOST_SPEED - config.PLAYER_CRUISE_SPEED)) * _night_spd
     else:
-        target = config.PLAYER_CRUISE_SPEED * (1.0 + thr * (1.0 - config.PLAYER_SLOW_FACTOR))
+        target = config.PLAYER_CRUISE_SPEED * (1.0 + thr * (1.0 - config.PLAYER_SLOW_FACTOR)) * _night_spd
     blend_rate = 0.8 if player_speed > target else 1.5
     player_speed += (target - player_speed) * min(adt * blend_rate, 1.0)
     # --- gravity energy exchange (same as the pack): stoop builds speed up

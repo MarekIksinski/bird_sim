@@ -35,6 +35,8 @@ fx = raw.get('foxes', {})
 rb = raw.get('rabbits', {})
 
 import config
+import daynight
+daynight.pin_full_day()   # night ecology neutralized (harness tests OTHER physics)
 import numpy as np
 
 # --- 1. config gate (derive expectations FROM the toml) ---

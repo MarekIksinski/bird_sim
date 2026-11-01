@@ -70,20 +70,22 @@ def light_at(t):
     daynight.day_phase = t
     return daynight._compute_light(t)
 
-check('dawn starts 0', light_at(0.0) == 0.0)
-check('dawn ramp mid = 0.5', abs(light_at(T / 2) - 0.5) < 0.05)
-check('dawn complete at T', light_at(T) == 1.0)
+check('dawn mid (t=0) = 0.5', abs(light_at(0.0) - 0.5) < 1e-9)
+check('dawn complete at T/2', light_at(T / 2) == 1.0)
 check('flat 1 midday', light_at(DAY / 2) == 1.0)
-check('dusk 0.5 at DAY - T/2', abs(light_at(DAY - T / 2) - 0.5) < 0.05)
-check('dark at DAY', light_at(DAY) == 0.0)
+check('dusk 0.5 at DAY', abs(light_at(DAY) - 0.5) < 0.05)
+check('dark at DAY + T', light_at(DAY + T) == 0.0)
 check('dark deep night', light_at(DAY + NIGHT / 2) == 0.0)
-check('still dark at cycle end', light_at(CYCLE - 1e-6) == 0.0)
+check('pre-dawn ramp reaches 0.5 at cycle end',
+      abs(light_at(CYCLE - 1e-6) - 0.5) < 1e-6)
+check('light curve continuous across wrap',
+      abs(light_at(CYCLE - 1e-6) - light_at(0.0)) < 1e-6)
 
-# asymmetry: light>0.5 spans DAY minus the two half-ramps below 0.5
+# asymmetry: light>0.5 spans DAY (dawn ramp half before t=0, dusk half after DAY)
 lit = sum(1 for _, l in samples if l > 0.5)
 frac = lit / len(samples)
-expected = (DAY - T) / CYCLE
-check(f'lit half ~ (day-T)/cycle ({frac:.3f} vs {expected:.3f})', abs(frac - expected) < 0.02)
+expected = DAY / CYCLE
+check(f'lit half ~ day_seconds/cycle ({frac:.3f} vs {expected:.3f})', abs(frac - expected) < 0.02)
 
 # --- dt-invariance over equal SIM TIME (each step capped at 0.05) ---
 daynight.reset_day()
@@ -117,9 +119,9 @@ set_phase(DAY / 2)
 check('light_obs noon ~ +1', abs(daynight.light_obs() - 1.0) < 1e-6)
 set_phase(DAY + NIGHT / 2)
 check('light_obs midnight ~ -1', abs(daynight.light_obs() + 1.0) < 1e-6)
-set_phase(T / 2)
+set_phase(0.0)   # t=0 is mid-dawn under the straddling ramp
 v = daynight.light_obs()
-check('light_obs mid-dawn ~ 0', abs(v) < 0.15)
+check('light_obs mid-dawn ~ 0', abs(v) < 1e-9)
 
 # --- sun_height proxy ---
 set_phase(DAY / 2)

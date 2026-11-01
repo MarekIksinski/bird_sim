@@ -23,6 +23,8 @@ from ursina import Ursina, held_keys
 app = Ursina()
 
 import backend, config, terrain, predators, flock, math3d
+import daynight
+daynight.pin_full_day()   # night ecology neutralized (harness tests OTHER physics)
 import player
 
 terrain.init_environment()

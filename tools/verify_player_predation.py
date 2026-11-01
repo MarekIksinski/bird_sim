@@ -28,6 +28,8 @@ os.environ['FORCE_CPU'] = '1'
 import numpy as np
 from ursina import time as u_time
 import config
+import daynight
+daynight.pin_full_day()   # night ecology neutralized (harness tests OTHER physics)
 
 TMP = tempfile.mkdtemp(prefix='birdsim_playerpred_')
 config.EVOLVE_DIR = TMP          # before predators import: ckpt + log land here

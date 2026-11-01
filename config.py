@@ -237,6 +237,12 @@ START_CAMERA = int(_get('game', 'start_camera', 4))
 DAY_SECONDS = float(_get('daynight', 'day_seconds', 180.0))
 NIGHT_SECONDS = float(_get('daynight', 'night_seconds', 120.0))
 TRANSITION_SECONDS = float(_get('daynight', 'transition_seconds', 15.0))
+# Hard (non-learned) night ecology: factors applied AT MIDNIGHT, scaled
+# smoothly by daynight.night_factor() (0 at day, 1 at night).
+ROOST_NIGHT_MULT = float(_get('daynight', 'roost_night_mult', 3.0))       # starling roost pull at midnight
+CRUISE_NIGHT_MULT = float(_get('daynight', 'cruise_night_mult', 0.7))     # starling cruise cap at midnight
+HAWK_NIGHT_SPEED_MULT = float(_get('daynight', 'hawk_night_speed_mult', 0.85))  # hawk/player speed targets at midnight
+PRED_NIGHT_SENSE_MULT = float(_get('daynight', 'pred_night_sense_mult', 1.2))   # fox/wolf effective detection radii at midnight
 # Dynamic FOV warp: widens toward BOOST_FOV as the tracked hawk approaches boost speed.
 BASE_FOV = _get('hawk', 'base_fov', 90.0)
 BOOST_FOV = _get('hawk', 'boost_fov', 110.0)

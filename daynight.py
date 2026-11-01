@@ -28,7 +28,7 @@ CYCLE_SECONDS = DAY_SECONDS + NIGHT_SECONDS
 sim_elapsed = 0.0
 day_phase = 0.0
 day_number = 0
-light_level = 1.0
+light_level = 0.5   # t=0 is mid-dawn (see _compute_light)
 sun_height = 0.0
 
 
@@ -41,14 +41,19 @@ def _smoothstep(a, b, x):
 
 
 def _compute_light(t):
+    # The dawn ramp STRADDLES the cycle boundary (t=0 is mid-dawn, light
+    # 0.5): a session starting at "dawn" is already brightening, and the
+    # night handicap is never fully on at startup.
     T = TRANSITION_SECONDS
-    if t < T:                            # dawn ramp 0 -> 1
-        return _smoothstep(0.0, T, t)
-    if t < DAY_SECONDS - T:              # full day
+    if t < T / 2:                        # dawn ramp (second half) 0.5 -> 1
+        return _smoothstep(-T / 2, T / 2, t)
+    if t < DAY_SECONDS - T / 2:          # full day
         return 1.0
-    if t < DAY_SECONDS:                  # dusk ramp 1 -> 0
-        return 1.0 - _smoothstep(DAY_SECONDS - T, DAY_SECONDS, t)
-    return 0.0                           # night
+    if t < DAY_SECONDS + T / 2:          # dusk ramp 1 -> 0 straddling DAY
+        return 1.0 - _smoothstep(DAY_SECONDS - T / 2, DAY_SECONDS + T / 2, t)
+    if t > CYCLE_SECONDS - T / 2:        # pre-dawn ramp 0 -> 0.5 (wraps into t=0)
+        return _smoothstep(CYCLE_SECONDS - T / 2, CYCLE_SECONDS + T / 2, t)
+    return 0.0                           # deep night
 
 
 def update_daynight(dt):
@@ -71,6 +76,31 @@ def light_obs():
     """NN sensor encoding (same style as the stamina sensor):
     +1.0 high noon, -1.0 midnight — tanh-friendly."""
     return -1.0 + 2.0 * light_level
+
+
+def night_factor():
+    """0.0 at full day -> 1.0 at full night (smooth, follows the ramps).
+    Physics-side night ecology scales with this; the NNs never see it
+    directly (they get light_obs instead)."""
+    return 1.0 - light_level
+
+
+def set_for_test(light):
+    """Harness helper: pin light_level (0..1) directly, bypassing phase
+    math — for night-ecology asserts that want exact light values."""
+    global light_level
+    light_level = float(light)
+
+
+def pin_full_day():
+    """Harness helper: force full daylight (light_level 1.0) so harnesses
+    that test OTHER physics see the pre-daynight behaviour. Same pattern
+    as pinning stamina/pos in the gravity/stamina soaks: any new physics
+    gate must be neutralized in harnesses that don't test it."""
+    global day_phase, light_level, sun_height
+    day_phase = 0.5 * DAY_SECONDS
+    light_level = 1.0
+    sun_height = 1.0
 
 
 def reset_day():

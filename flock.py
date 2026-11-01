@@ -23,7 +23,8 @@ from config import (NUM_BIRDS, NEIGHBOR_COUNT, SEPARATION_DIST, ROOST_RADIUS,
                     CASUALTY_DECAY, TERRAIN_SIZE, PANIC_RADIUS, FORCE_FLEE,
                     PANIC_MAX_SPEED, GENERATION_SECONDS, COLOR_STARLING,
                     FLOCK_GRAVITY, MIN_BIRD_SPEED, DIVE_SPEED_MULT,
-                    CLIMB_SPEED_MULT, STARLING_HIDDEN_LAYERS, MAX_ALTITUDE)
+                    CLIMB_SPEED_MULT, STARLING_HIDDEN_LAYERS, MAX_ALTITUDE,
+                    ROOST_NIGHT_MULT, CRUISE_NIGHT_MULT)
 import daynight
 import predators
 import terrain
@@ -316,10 +317,17 @@ def update_boids_gpu():
     sep_mult = 1.0 + 0.75 * out_gpu[:, 0:1]
     align_mult = 1.0 + 0.75 * out_gpu[:, 1:2]
     cohere_mult = 1.0 + 0.75 * out_gpu[:, 2:3]
+    # --- night ecology (hard, not learned): at dusk the roost pull
+    # strengthens (murmuration settles) and the CRUISE cap drops. The
+    # panic cap below stays untouched — a hawk that finds the roost at
+    # night still gets a full-speed chase. ---
+    _nf = daynight.night_factor()
+    roost_night = 1.0 + (ROOST_NIGHT_MULT - 1.0) * _nf
+    cruise_night = 1.0 + (CRUISE_NIGHT_MULT - 1.0) * _nf
     total_force = (sep_force * FORCE_SEPARATE * sep_mult) + \
                   (align_force * FORCE_ALIGN * align_mult) + \
                   (cohere_force * FORCE_COHERE * cohere_mult) + \
-                  (roost_force * FORCE_ROOST) + \
+                  (roost_force * FORCE_ROOST * roost_night) + \
                   (center_force * FORCE_CENTER)
 
     # Clamp Force
@@ -347,7 +355,7 @@ def update_boids_gpu():
     pitch_mult = cp.where(f_y < 0,
                           1.0 - f_y * (DIVE_SPEED_MULT - 1.0),
                           1.0 - f_y * (1.0 - CLIMB_SPEED_MULT))
-    max_spd_dyn = MAX_SPEED * pitch_mult
+    max_spd_dyn = MAX_SPEED * pitch_mult * cruise_night
 
     # Clamp Speed (dynamic cruise cap)
     speed = cp.linalg.norm(vel_gpu, axis=1, keepdims=True)

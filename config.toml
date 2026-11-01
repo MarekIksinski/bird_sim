@@ -120,6 +120,11 @@ force_cpu = false         # true = skip GPU even if VRAM looks free
 day_seconds = 180.0       # lit part of one cycle (s)
 night_seconds = 120.0     # dark part of one cycle (s)
 transition_seconds = 15.0 # dawn/dusk smoothstep ramp width (s)
+# hard night ecology factors (applied AT MIDNIGHT, scaled by the ramps):
+roost_night_mult = 3.0        # starling roost pull x at midnight (settles the murmuration at dusk)
+cruise_night_mult = 0.7       # starling cruise speed cap x at midnight (panic cap untouched)
+hawk_night_speed_mult = 0.85  # hawk/player speed targets x at midnight (night hunting stays costly)
+pred_night_sense_mult = 1.2   # fox/wolf prey-detection radii x at midnight (rabbits hear them sooner)
 
 [rabbits]
 num_rabbits = 400           # ground prey population (pure NumPy state machine)

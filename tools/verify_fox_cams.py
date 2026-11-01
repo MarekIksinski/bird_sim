@@ -20,7 +20,9 @@ import numpy as np
 from ursina import Ursina, camera, application
 
 app = Ursina(window_type='offscreen', development_mode=False)
-import config, terrain, flock, rabbits, foxes, predators, player, hud_cam, simstep
+import config
+import daynight
+daynight.pin_full_day()   # night ecology neutralized (harness tests OTHER physics), terrain, flock, rabbits, foxes, predators, player, hud_cam, simstep
 
 terrain.init_environment()
 flock_viz = flock.FlockVisuals()

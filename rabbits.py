@@ -17,7 +17,9 @@ from config import (NUM_BURROWS, NUM_RABBITS, RABBIT_FLEE_RADIUS,
                     FOX_STEALTH_FLEE_RADIUS,
                     FOX_STEALTH_FREEZE_RADIUS, FOX_SPRINT_FLEE_RADIUS,
                     FOX_CATCH_RADIUS, FOX_BOOST_SPEED, FOX_CRUISE_SPEED,
-                    FOX_STALK_FACTOR, WOLF_FLEE_TRIGGER_RADIUS, COLOR_RABBIT)
+                    FOX_STALK_FACTOR, WOLF_FLEE_TRIGGER_RADIUS, COLOR_RABBIT,
+                    PRED_NIGHT_SENSE_MULT)
+import daynight
 import predators
 import player
 import foxes
@@ -69,8 +71,13 @@ def update_rabbits():
     stalk_min_spd = FOX_CRUISE_SPEED * FOX_STALK_FACTOR
     noise = np.clip((foxes.fox_speed - stalk_min_spd)
                     / max(FOX_BOOST_SPEED - stalk_min_spd, 1e-6), 0.0, 1.0)
-    eff_flee_r = FOX_STEALTH_FLEE_RADIUS + noise * (FOX_SPRINT_FLEE_RADIUS - FOX_STEALTH_FLEE_RADIUS)
-    eff_freeze_r = FOX_STEALTH_FREEZE_RADIUS + noise * (RABBIT_FREEZE_RADIUS - FOX_STEALTH_FREEZE_RADIUS)
+    # --- night ecology (hard): ground predators hunt better by dark —
+    # rabbits hear/smell them from further. Scaling the STEALTH ANCHORS
+    # (not the raw distance) keeps the piecewise map's beyond-freeze slope
+    # 1:1, so distant foxes can never fake a Freeze at night. ---
+    sense_night = 1.0 + (PRED_NIGHT_SENSE_MULT - 1.0) * daynight.night_factor()
+    eff_flee_r = (FOX_STEALTH_FLEE_RADIUS + noise * (FOX_SPRINT_FLEE_RADIUS - FOX_STEALTH_FLEE_RADIUS)) * sense_night
+    eff_freeze_r = (FOX_STEALTH_FREEZE_RADIUS + noise * (RABBIT_FREEZE_RADIUS - FOX_STEALTH_FREEZE_RADIUS)) * sense_night
     inside = d_fox_raw <= eff_flee_r[None, :]
     beyond_freeze = d_fox_raw > eff_freeze_r[None, :]
     d_fox_perceived = np.where(
@@ -89,7 +96,7 @@ def update_rabbits():
     # so 55m maps onto RABBIT_FLEE_RADIUS and the existing state-machine
     # thresholds (flee/freeze/recover) work unchanged. ---
     d_wolf_raw = np.linalg.norm(rabbit_pos[:, None, :] - wolves.wolf_pos[None, :, :], axis=2)  # (R,Wf)
-    d_wolf = (d_wolf_raw * (RABBIT_FLEE_RADIUS / WOLF_FLEE_TRIGGER_RADIUS)).min(axis=1)
+    d_wolf = (d_wolf_raw * (RABBIT_FLEE_RADIUS / (WOLF_FLEE_TRIGGER_RADIUS * sense_night))).min(axis=1)
     d = np.minimum(np.minimum(np.minimum(d_pack, d_player), d_fox), d_wolf)
 
     # --- fox catches: any rabbit a fox literally touches is eaten; the

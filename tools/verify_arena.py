@@ -5,6 +5,8 @@ import sys, os
 sys.path.insert(0, '/home/marek/Playground/bird_sim')
 os.environ['FORCE_CPU'] = '1'
 import config
+import daynight
+daynight.pin_full_day()   # night ecology neutralized (harness tests OTHER physics)
 import numpy as np
 
 # fake ursina clock before flock imports it

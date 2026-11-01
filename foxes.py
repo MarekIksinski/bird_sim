@@ -35,13 +35,14 @@ from config import (NUM_FOXES, NUM_PAIRS, FOXES_PER_PAIR, TERRAIN_SIZE,
                     RABBIT_FLEE_SPEED, COLOR_FOX,
                     COLOR_DUST, SPRINT_DUST_FACTOR,
                     DUST_INTERVAL, DUST_LIFETIME, FOX_DUST_POOL)
+import daynight
 import terrain
 from math3d import _q_from_aa_b, _q_mul_b
 
 _fox_rng = np.random.default_rng(4321)
 _fox_edge = TERRAIN_SIZE / 2 - 10.0          # same arena line rabbits clamp to
 
-# --- pair MLPs: (15 sensors) + hidden + (2 outputs), one per pair ---
+# --- pair MLPs: (16 sensors) + hidden + (2 outputs), one per pair ---
 # 0,1 nearest-rabbit dir on body axes f=(sin yaw, cos yaw), r=(cos yaw,-sin yaw)
 # 2   rabbit distance / FOX_PROXIMITY_RADIUS
 # 3,4 rabbit velocity / RABBIT_FLEE_SPEED on f,r
@@ -52,8 +53,9 @@ _fox_edge = TERRAIN_SIZE / 2 - 10.0          # same arena line rabbits clamp to
 # 11  arena wall repulsion projected on f (within 80m of the edge)
 # 12,13 nearest-WOLF direction on f,r (apex predator evasion)
 # 14  wolf threat proximity (0 safe -> 1 on top of the fox, range FOX_WOLF_PANIC_RADIUS)
+# 15  day/night light (+1 noon .. -1 midnight)
 # Outputs: [0] yaw rate (x FOX_YAW_RATE deg/s), [1] throttle (stamina-gated)
-FOX_NET_SHAPE = (15,) + FOX_HIDDEN_LAYERS + (2,)
+FOX_NET_SHAPE = (16,) + FOX_HIDDEN_LAYERS + (2,)
 FOX_GENOME_LEN = sum(FOX_NET_SHAPE[i] * FOX_NET_SHAPE[i+1] +
                      FOX_NET_SHAPE[i+1] for i in range(len(FOX_NET_SHAPE) - 1))
 fox_pair_np = np.arange(NUM_FOXES) // FOXES_PER_PAIR
@@ -285,6 +287,8 @@ def update_foxes():
     obs[:, 12] = np.sum(wdir2 * f2, axis=1)
     obs[:, 13] = np.sum(wdir2 * r2, axis=1)
     obs[:, 14] = np.clip(1.0 - d_wolf_min / FOX_WOLF_PANIC_RADIUS, 0.0, 1.0)
+    # day/night light: +1 noon, -1 midnight (foxes may learn night hunting)
+    obs[:, 15] = daynight.light_obs()
     np.clip(obs, -1.0, 1.0, out=obs)
 
     # --- batched pair forward ---

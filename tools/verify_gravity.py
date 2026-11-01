@@ -170,7 +170,7 @@ print(f"flock soak 180 frames: speed min={min(mins):.2f} max={max(maxes):.2f} "
 
 # ---------- F. obs vector sanity ----------
 obs = predators._hawk_observations(pos_np, vel_np)
-assert obs.shape == (predators.POPULATION_SIZE, 15)
+assert obs.shape == (predators.POPULATION_SIZE, predators.NET_SHAPE[0])
 assert np.all(np.isfinite(obs)) and np.all(np.abs(obs) <= 1.0)
 # stamina sensor: topped full tanks (boost_duration burn makes the last
 # soak frame read ~0.97) -> full tank reads +1.0, empty reads -0.8,

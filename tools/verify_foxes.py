@@ -63,13 +63,13 @@ class _Clock:
         return 0.0
 rabbits.time = _Clock()
 foxes.time = _Clock()
-assert foxes.FOX_NET_SHAPE == (15,) + config.FOX_HIDDEN_LAYERS + (2,), foxes.FOX_NET_SHAPE
+assert foxes.FOX_NET_SHAPE == (16,) + config.FOX_HIDDEN_LAYERS + (2,), foxes.FOX_NET_SHAPE
 exp = sum(foxes.FOX_NET_SHAPE[i] * foxes.FOX_NET_SHAPE[i+1] + foxes.FOX_NET_SHAPE[i+1]
           for i in range(len(foxes.FOX_NET_SHAPE) - 1))
 assert foxes.FOX_GENOME_LEN == exp
 assert foxes.pair_pop.shape == (config.NUM_PAIRS, exp)
 assert len(foxes.pair_Ws) == len(foxes.FOX_NET_SHAPE) - 1
-assert foxes.pair_Ws[0].shape == (config.NUM_PAIRS, 15, config.FOX_HIDDEN_LAYERS[0])
+assert foxes.pair_Ws[0].shape == (config.NUM_PAIRS, foxes.FOX_NET_SHAPE[0], config.FOX_HIDDEN_LAYERS[0])
 print(f'PASS config+shapes: FOX_NET_SHAPE={foxes.FOX_NET_SHAPE} FGL={exp} '
       f'pairs={config.NUM_PAIRS}x{config.FOXES_PER_PAIR}')
 # initial hunger clocks are STAGGERED (0..20s), never all-zero: synchronized
@@ -229,8 +229,8 @@ assert np.all(np.abs(foxes.fox_pos[-2:, 0]) <= edge)
 log = open(os.path.join(tmp, 'evolution.log')).read()
 assert f'[fox_nn] pair {config.NUM_PAIRS - 1} replaced by parent 0' in log, log
 # fresh layers uploaded: einsum forward matches per-pair loop form
-obs = np.random.default_rng(7).uniform(-1, 1, (config.NUM_FOXES, 15)).astype(np.float32)
-a = obs.reshape(config.NUM_PAIRS, config.FOXES_PER_PAIR, 15)
+obs = np.random.default_rng(7).uniform(-1, 1, (config.NUM_FOXES, foxes.FOX_NET_SHAPE[0])).astype(np.float32)
+a = obs.reshape(config.NUM_PAIRS, config.FOXES_PER_PAIR, foxes.FOX_NET_SHAPE[0])
 for W, b in zip(foxes.pair_Ws, foxes.pair_bs):
     a = np.tanh(np.einsum('pfi,pio->pfo', a, W) + b[:, None, :])
 ref = np.empty((config.NUM_FOXES, 2), dtype=np.float32)

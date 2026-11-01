@@ -31,6 +31,7 @@ from config import (POPULATION_SIZE, NUM_BIRDS, MUTATION_TINY,
                     BOOST_DURATION, BOOST_RECHARGE, BOOST_COOLDOWN_RECOVER,
                     HAWK_HIDDEN_LAYERS, COLOR_HAWK_GOLD, COLOR_HAWK_BRIGHT,
                     COLOR_HAWK_MUTED)
+import daynight
 import terrain
 from math3d import _q_mul_b, _q_from_aa_b, _q_rot_b
 
@@ -100,7 +101,7 @@ def respawn_pack():
 # automatically and the checkpoint shape guard starts a fresh evolution
 # on any width change. (HAWK_HIDDEN_LAYERS via the from-import above: a bare
 # `config.` reference would hit panda3d's DConfig, injected by `direct`.)
-NET_SHAPE = (15,) + HAWK_HIDDEN_LAYERS + (4,)
+NET_SHAPE = (16,) + HAWK_HIDDEN_LAYERS + (4,)
 GENOME_LEN = sum(NET_SHAPE[i] * NET_SHAPE[i+1] + NET_SHAPE[i+1] for i in range(len(NET_SHAPE) - 1))
 # observation normalisation for the target-velocity inputs
 OBS_VEL_SCALE = PANIC_MAX_SPEED
@@ -363,12 +364,14 @@ def _nearest_bird_np(pos_np, vel_np):
     return direction, dist, near_vel, near_pos
 
 def _hawk_observations(pos_np, vel_np):
-    """15 normalized inputs per hawk: line-of-sight axis cues, clamped
+    """16 normalized inputs per hawk: line-of-sight axis cues, clamped
     distance, target-velocity axis cues, terrain clearance, arena awareness
     (wall-repulsion projected on f/r, edge proximity, ceiling clearance),
     two proprioceptive gravity sensors (current airspeed and nose pitch
-    f_y +1 up / -1 down) so the brain can feel and exploit gravity, and a
-    boost-stamina sensor so the brain can feel and manage the tank."""
+    f_y +1 up / -1 down) so the brain can feel and exploit gravity, a
+    boost-stamina sensor so the brain can feel and manage the tank, and a
+    day/night light sensor (+1 noon / -1 midnight) so the brain can learn
+    to hunt by dark — or learn to loaf."""
     f, r, u = pack_axes()
     direction, dist, near_vel, _ = _nearest_bird_np(pos_np, vel_np)
     clearance = pack_pos[:, 1] - terrain.height_at(pack_pos[:, 0], pack_pos[:, 2])
@@ -405,6 +408,8 @@ def _hawk_observations(pos_np, vel_np):
     # and the exhaustion lockout pins the sensor hard at -1.0 so the brain
     # FEELS the lockout immediately (distinct from a merely-low tank).
     obs[:, 14] = np.where(pack_exhausted, -1.0, -0.8 + 1.8 * pack_stamina)
+    # day/night light: +1 high noon, -1 midnight (daynight.light_obs)
+    obs[:, 15] = daynight.light_obs()
     return np.clip(obs, -1.0, 1.0)
 
 def update_predators(layers, pos_np, vel_np):

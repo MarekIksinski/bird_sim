@@ -78,13 +78,13 @@ rabbits.time = _Clock()
 foxes.time = _Clock()
 wolves.time = _Clock()
 
-assert wolves.WOLF_NET_SHAPE == (16,) + config.WOLF_HIDDEN_LAYERS + (3,), wolves.WOLF_NET_SHAPE
+assert wolves.WOLF_NET_SHAPE == (17,) + config.WOLF_HIDDEN_LAYERS + (3,), wolves.WOLF_NET_SHAPE
 exp = sum(wolves.WOLF_NET_SHAPE[i] * wolves.WOLF_NET_SHAPE[i+1] + wolves.WOLF_NET_SHAPE[i+1]
           for i in range(len(wolves.WOLF_NET_SHAPE) - 1))
 assert wolves.WOLF_GENOME_LEN == exp
 assert wolves.pair_pop.shape == (config.NUM_WOLF_PAIRS, exp)
 assert len(wolves.pair_Ws) == len(wolves.WOLF_NET_SHAPE) - 1
-assert wolves.pair_Ws[0].shape == (config.NUM_WOLF_PAIRS, 16, config.WOLF_HIDDEN_LAYERS[0])
+assert wolves.pair_Ws[0].shape == (config.NUM_WOLF_PAIRS, wolves.WOLF_NET_SHAPE[0], config.WOLF_HIDDEN_LAYERS[0])
 print(f'PASS shapes: WOLF_NET_SHAPE={wolves.WOLF_NET_SHAPE} WGL={exp} '
       f'pairs={config.NUM_WOLF_PAIRS}x{config.WOLVES_PER_PAIR}')
 # staggered hunger clocks across 0..0.75*starve
@@ -348,8 +348,8 @@ assert 0.0 <= wolves.pair_starvation[config.NUM_WOLF_PAIRS - 1] <= 10.0   # 10s 
 log = open(os.path.join(tmp, 'evolution.log')).read()
 assert f'[wolf_nn] pair {config.NUM_WOLF_PAIRS - 1} replaced by parent 0' in log, log
 # fresh layers uploaded: einsum forward matches per-pair loop form
-obs = np.random.default_rng(7).uniform(-1, 1, (config.NUM_WOLVES, 16)).astype(np.float32)
-a = obs.reshape(config.NUM_WOLF_PAIRS, config.WOLVES_PER_PAIR, 16)
+obs = np.random.default_rng(7).uniform(-1, 1, (config.NUM_WOLVES, wolves.WOLF_NET_SHAPE[0])).astype(np.float32)
+a = obs.reshape(config.NUM_WOLF_PAIRS, config.WOLVES_PER_PAIR, wolves.WOLF_NET_SHAPE[0])
 for W, b in zip(wolves.pair_Ws, wolves.pair_bs):
     a = np.tanh(np.einsum('pfi,pio->pfo', a, W) + b[:, None, :])
 ref = np.empty((config.NUM_WOLVES, 3), dtype=np.float32)

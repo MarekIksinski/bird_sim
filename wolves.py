@@ -37,13 +37,14 @@ from config import (NUM_WOLVES, NUM_WOLF_PAIRS, WOLVES_PER_PAIR, TERRAIN_SIZE,
                     FOX_BOOST_SPEED, COLOR_WOLF, COLOR_WOLF_HOWL,
                     SPRINT_DUST_FACTOR, DUST_INTERVAL,
                     WOLF_DUST_POOL)
+import daynight
 import terrain
 from math3d import _q_from_aa_b, _q_mul_b
 
 _wolf_rng = np.random.default_rng(8765)
 _wolf_edge = TERRAIN_SIZE / 2 - 10.0          # same arena line rabbits/foxes clamp to
 
-# --- pair MLPs: (16 sensors) + hidden + (3 outputs), one per pair ---
+# --- pair MLPs: (17 sensors) + hidden + (3 outputs), one per pair ---
 # 0,1   nearest-FOX dir on body axes f=(sin yaw, cos yaw), r=(cos yaw,-sin yaw)
 # 2     fox distance / WOLF_PROXIMITY_RADIUS
 # 3,4   fox velocity / FOX_BOOST_SPEED on f,r          (high-value prey)
@@ -58,9 +59,10 @@ _wolf_edge = TERRAIN_SIZE / 2 - 10.0          # same arena line rabbits/foxes cl
 # 13    own speed (-1 stalk .. 0 cruise .. +1 sprint)
 # 14    stamina sensor (-1.0 exhausted, else -0.8 + 1.8 * stamina)
 # 15    arena wall repulsion projected on f (within 80m of the edge)
+# 16    day/night light (+1 noon .. -1 midnight)
 # Outputs: [0] yaw rate (x WOLF_YAW_RATE deg/s), [1] throttle (stamina-gated),
 #          [2] HOWL vocal signal -> wolf_signal (read by every other wolf)
-WOLF_NET_SHAPE = (16,) + WOLF_HIDDEN_LAYERS + (3,)
+WOLF_NET_SHAPE = (17,) + WOLF_HIDDEN_LAYERS + (3,)
 WOLF_GENOME_LEN = sum(WOLF_NET_SHAPE[i] * WOLF_NET_SHAPE[i+1] +
                       WOLF_NET_SHAPE[i+1] for i in range(len(WOLF_NET_SHAPE) - 1))
 wolf_pair_np = np.arange(NUM_WOLVES) // WOLVES_PER_PAIR
@@ -242,6 +244,8 @@ def update_wolves():
     obs[:, 13] = np.clip(spd_norm, -1.0, 1.0)
     obs[:, 14] = np.where(wolf_exhausted, -1.0, -0.8 + 1.8 * wolf_stamina)
     obs[:, 15] = rep_x * f2[:, 0] + rep_z * f2[:, 1]
+    # day/night light: +1 noon, -1 midnight (wolves may learn night hunts)
+    obs[:, 16] = daynight.light_obs()
     np.clip(obs, -1.0, 1.0, out=obs)
 
     # --- batched pair forward ---

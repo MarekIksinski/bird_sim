@@ -52,7 +52,7 @@ print(f"PASS config: replace_deaths={config.TRIBE_REPLACE_DEATHS}, "
       f"(half-life {np.log(2.0)/config.CASUALTY_DECAY:.0f}s)")
 
 # --- 2. net shape: must match config [flock_nn] hidden_layers -------------
-assert flock.STARLING_NET_SHAPE == (21,) + config.STARLING_HIDDEN_LAYERS + (6,), flock.STARLING_NET_SHAPE
+assert flock.STARLING_NET_SHAPE == (22,) + config.STARLING_HIDDEN_LAYERS + (6,), flock.STARLING_NET_SHAPE
 print('PASS STARLING_NET_SHAPE matches config hidden_layers:', flock.STARLING_NET_SHAPE)
 
 # --- helpers ---------------------------------------------------------------

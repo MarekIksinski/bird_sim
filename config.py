@@ -133,7 +133,7 @@ INDUCED_DRAG = float(_get('hawk', 'induced_drag', 1.8))  # airspeed bleed rate i
 BOOST_DURATION = float(_get('hawk', 'boost_duration', 1.0))          # s of full boost, 100% -> 0%
 BOOST_RECHARGE = float(_get('hawk', 'boost_recharge', 3.0))          # s to refill 0% -> 100%
 BOOST_COOLDOWN_RECOVER = float(_get('hawk', 'boost_cooldown_recover', 1.0))  # stamina to clear lockout (0..1)
-# Hidden-layer widths of the hawk MLP: NET_SHAPE = (15,) + hidden + (4,)
+# Hidden-layer widths of the hawk MLP: NET_SHAPE = (16,) + hidden + (4,)
 # in predators.py. Arbitrary depth/width; the population.npz shape guard
 # starts a fresh evolution on any mismatch (GENOME_LEN changes).
 HAWK_HIDDEN_LAYERS = _hidden_layers('hawk', 'hidden_layers', [32, 16])

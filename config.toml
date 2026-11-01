@@ -46,7 +46,7 @@ boost_recharge = 5.0      # seconds to refill stamina 0% -> 100% while not boost
 boost_cooldown_recover = 1.0  # stamina needed to clear the exhaustion lockout (1.0 = a fully
                               # emptied tank must recharge the whole 3s; letting off before 0
                               # recharges partially with NO lockout at all)
-hidden_layers = [32, 24, 16]  # hawk MLP hidden layer widths: (15 sensors) -> 32 -> 16 -> (4 controls).
+hidden_layers = [32, 24, 16]  # hawk MLP hidden layer widths: (16 sensors) -> ... -> (4 controls).
                           # Any depth/width works; changing it changes GENOME_LEN, so the
                           # population.npz shape guard starts a FRESH evolution.
 
@@ -100,7 +100,7 @@ num_tribes = 20           # one shared MLP per tribe; birds split into contiguou
 mutation_sigma = 0.06     # gaussian noise on offspring tribe weights
 replace_deaths = 5        # tribe loses this many birds -> replaced by mutated top-3 parent
 casualty_decay = 0.0005     # per-second exponential fade of the casualty counter (0 = never decay)
-hidden_layers = [32, 24, 16]  # starling tribe MLP hidden widths: (21 sensors) -> 32 -> 16 -> (6 outputs).
+hidden_layers = [32, 24, 16]  # starling tribe MLP hidden widths: (22 sensors) -> ... -> (6 outputs).
                           # Any depth/width works; changing it changes STARLING_GENOME_LEN, so the
                           # starling_tribes.npz shape guard starts the tribes FRESH.
 
@@ -152,7 +152,7 @@ proximity_radius = 80.0     # NN sensor + proximity score radius
 starve_seconds = 240.0       # no catch for this long -> pair replaced (Moran)
 stalk_hunger_relief = 0.4   # hunger timer slows to this while actively stalking
 mutation_sigma = 0.07       # gaussian noise on offspring pair weights
-hidden_layers = [24, 18, 12]    # fox pair MLP: (15 sensors) -> 24 -> 12 -> (2 outputs)
+hidden_layers = [24, 18, 12]    # fox pair MLP: (16 sensors) -> ... -> (2 outputs)
 wolf_panic_radius = 45.0    # m; foxes sense and evade wolves within this range
 
 [wolves]
@@ -182,7 +182,7 @@ assist_share = 0.65         # fraction of kill score + hunger relief for assisti
 howl_coop_bonus = 25.0      # extra score when a kill is assisted AND someone was howling
 starve_seconds = 240.0      # 3-minute continuous Moran starvation timer
 mutation_sigma = 0.07       # gaussian noise on offspring pair weights
-hidden_layers = [32, 24, 16]    # wolf pair MLP: (16 sensors) -> 32 -> 16 -> (3 outputs)
+hidden_layers = [32, 24, 16]    # wolf pair MLP: (17 sensors) -> ... -> (3 outputs)
 color = [130, 140, 155]     # silver/slate-grey wolf coat
 howl_color = [220, 240, 255]  # ice-blue tint while actively howling |signal| > 0.5
 

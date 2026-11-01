@@ -53,7 +53,7 @@ roost_center = cp.array([0, ROOST_BASE_ALTITUDE, 0], dtype=cp.float32)
 # Hidden-layer widths come from config [flock_nn] hidden_layers
 # (default [32, 16]): arbitrary depth/width, every unpack/upload/forward
 # loop runs over len(STARLING_NET_SHAPE) - 1 layers.
-STARLING_NET_SHAPE = (21,) + STARLING_HIDDEN_LAYERS + (6,)
+STARLING_NET_SHAPE = (22,) + STARLING_HIDDEN_LAYERS + (6,)
 STARLING_GENOME_LEN = sum(STARLING_NET_SHAPE[i] * STARLING_NET_SHAPE[i+1] +
                           STARLING_NET_SHAPE[i+1] for i in range(len(STARLING_NET_SHAPE) - 1))
 bird_tribe_np = np.arange(NUM_BIRDS) // BIRDS_PER_TRIBE
@@ -303,6 +303,8 @@ def update_boids_gpu():
                           half_obs - cp.abs(pos_gpu[:, 2]))
     obs_gpu[:, 19] = cp.clip(edge_gpu / wall_sensor, 0.0, 1.0)   # 0 = at wall, 1 = safe
     obs_gpu[:, 20] = cp.clip((MAX_ALTITUDE - pos_gpu[:, 1]) / 30.0, 0.0, 1.0)
+    # day/night light (tribe-shared sensor): +1 noon, -1 midnight
+    obs_gpu[:, 21] = np.float32(daynight.light_obs())
     cp.clip(obs_gpu, -1.0, 1.0, out=obs_gpu)
 
     a = obs_gpu.reshape(NUM_TRIBES, BIRDS_PER_TRIBE, STARLING_NET_SHAPE[0])

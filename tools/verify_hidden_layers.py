@@ -33,8 +33,8 @@ str_h = tuple(raw.get('flock_nn', {}).get('hidden_layers', [32, 16]))
 # --- 1. shapes ---
 assert config.HAWK_HIDDEN_LAYERS == hawk_h
 assert config.STARLING_HIDDEN_LAYERS == str_h
-assert predators.NET_SHAPE == (15,) + hawk_h + (4,), predators.NET_SHAPE
-assert flock.STARLING_NET_SHAPE == (21,) + str_h + (6,), flock.STARLING_NET_SHAPE
+assert predators.NET_SHAPE == (16,) + hawk_h + (4,), predators.NET_SHAPE
+assert flock.STARLING_NET_SHAPE == (22,) + str_h + (6,), flock.STARLING_NET_SHAPE
 exp_gl = sum(predators.NET_SHAPE[i] * predators.NET_SHAPE[i+1] + predators.NET_SHAPE[i+1]
              for i in range(len(predators.NET_SHAPE) - 1))
 assert predators.GENOME_LEN == exp_gl, (predators.GENOME_LEN, exp_gl)
@@ -110,8 +110,8 @@ code = textwrap.dedent(f'''
     assert config.__file__.startswith({d!r}), config.__file__
     assert config.HAWK_HIDDEN_LAYERS == (8, 4, 8, 2), config.HAWK_HIDDEN_LAYERS
     assert config.STARLING_HIDDEN_LAYERS == (64,), config.STARLING_HIDDEN_LAYERS
-    assert predators.NET_SHAPE == (15, 8, 4, 8, 2, 4), predators.NET_SHAPE
-    assert flock.STARLING_NET_SHAPE == (21, 64, 6), flock.STARLING_NET_SHAPE
+    assert predators.NET_SHAPE == (16, 8, 4, 8, 2, 4), predators.NET_SHAPE
+    assert flock.STARLING_NET_SHAPE == (22, 64, 6), flock.STARLING_NET_SHAPE
     exp = sum(predators.NET_SHAPE[i]*predators.NET_SHAPE[i+1] + predators.NET_SHAPE[i+1]
               for i in range(len(predators.NET_SHAPE)-1))
     assert predators.GENOME_LEN == exp, (predators.GENOME_LEN, exp)
@@ -123,20 +123,20 @@ code = textwrap.dedent(f'''
     # forward runs at arbitrary depth
     Ws, bs = predators._stack_population()
     assert len(Ws) == 5
-    a = np.zeros((predators.POPULATION_SIZE, 15))
+    a = np.zeros((predators.POPULATION_SIZE, predators.NET_SHAPE[0]))
     for W, b in zip(Ws, bs):
         a = np.tanh(np.einsum('ni,nio->no', a, W) + b)
     assert a.shape == (predators.POPULATION_SIZE, 4)
     flock._upload_tribe_layers()
-    assert len(flock.tribe_Ws) == 2 and flock.tribe_Ws[0].shape[1:] == (21, 64)
+    assert len(flock.tribe_Ws) == 2 and flock.tribe_Ws[0].shape[1:] == (22, 64)
     print('VARIANT_OK')
 ''')
 import subprocess as _sp
 r = _sp.run([sys.executable, '-u', '-c', code], capture_output=True, text=True,
             timeout=180, cwd=d, env={**os.environ, 'FORCE_CPU': '1'})
 assert 'VARIANT_OK' in r.stdout, f'variant config failed:\n{r.stdout}\n{r.stderr}'
-print('PASS arbitrary depth/width: hawk [8,4,8,2] -> (15,8,4,8,2,4), '
-      'starling [64] -> (21,64,6); forwards + fresh pops OK')
+print('PASS arbitrary depth/width: hawk [8,4,8,2] -> (16,8,4,8,2,4), '
+      'starling [64] -> (22,64,6); forwards + fresh pops OK')
 
 # ---------- part C: checkpoint shape guard rejects old widths ----------
 # write a checkpoint in the OLD (15,16,8,4) layout into a temp save dir,

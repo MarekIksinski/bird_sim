@@ -73,7 +73,9 @@ reset_keys = "r"
 
 [pack]
 population_size = 10        # hawks flying simultaneously each generation
-generation_seconds = 90.0   # generation length; then rank -> 3-tiered speciation
+generation_seconds = 600.0  # generation length; then rank -> 3-tiered speciation
+                            # 600s = 2 full day/night cycles per hawk lifetime
+                            # (cycle 300s) — every genome experiences day AND night
 mutation_tiny = 0.02        # tier 1: champion lineage (exploitation, fine-tune)
 mutation_medium = 0.08      # tier 2: runner-up lineage (balanced exploration)
 mutation_heavy = 0.20       # tier 3: wildcard lineage (high-variance lottery)

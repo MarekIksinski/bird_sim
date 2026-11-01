@@ -13,10 +13,10 @@ Agreed design (2026-10-31):
 
 ---
 
-## Task 0 — Preserve the evolved lineage
-1. Commit a snapshot of `evolution/` (population.npz, starling_tribes.npz, fox_pairs.npz,
-   wolf_pairs.npz, history.csv, evolution.log) to a `pre-daynight` tag or copy to `evolution_backup/`
-   (gitignored copy + annotated tag on the commit). Rollback path must exist before Task 3 lands.
+## Task 0 — Preserve the evolved lineage [DONE 2026-10-31]
+- testing merged FF into main (both pushed); user's hidden_layers retune committed first
+  (all four networks already shape-reset at b596b12, so no live lineage rides into Task 3).
+- evolution/ copied to evolution_backup/ (gitignored, commit 93a1c5b). Rollback path exists.
 
 ## Task 1 — daynight.py (new layer, bottom of the stack)
 1. Module state: `day_phase` (float32 accumulator), `day_number` (int).

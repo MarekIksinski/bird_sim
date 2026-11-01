@@ -15,6 +15,8 @@ main.py — entrypoint orchestrator. Module hierarchy (bottom -> top):
     rabbits.py   ground prey FSM + RabbitVisuals
     foxes.py     ground predator pairs, Moran pair evolution, FoxVisuals
     wolves.py    apex predator pairs, howl channel, pack-share hunting, WolfVisuals
+    daynight.py  day/night clock + sim_elapsed (physics time source)
+    simstep.py   sim_step(dt): the whole physics chain, render-decoupled
     hud_cam.py   camera modes, HUD text, keyboard
 
 State is ALWAYS reached through the module namespace (predators.best_idx,
@@ -26,7 +28,7 @@ evolution, so `from module import var` would silently go stale.
 import backend
 from config import _FOG_RANGE, SHADOW_BIAS, SHADOW_MAP_SIZE
 
-from ursina import Ursina, Entity, Vec2, Vec3, scene
+from ursina import Ursina, Entity, Vec2, Vec3, scene, time
 from ursina.lights import DirectionalLight
 from ursina.shaders import lit_with_shadows_shader
 
@@ -38,6 +40,7 @@ import foxes
 import wolves
 import player
 import hud_cam
+import simstep
 app = Ursina(vsync=False)
 
 # --- advanced lighting: every entity built AFTER this point gets the
@@ -103,7 +106,16 @@ def input(key):
     hud_cam.handle_input(key)
 
 def update():
-    player.update_player()
+    # physics: ONE sim step per rendered frame (simstep.sim_step owns the
+    # whole chain; Visuals classes are render-only now). Turbo training
+    # (todo Task 6) = K sim_step calls per frame with a fixed dt.
+    simstep.sim_step(time.dt)
+    # render pass: mesh rebuilds + entity sync + camera/HUD
+    flock_viz.render()
+    rabbit_viz.render()
+    fox_viz.render()
+    wolf_viz.render()
+    predators.update_pack_visuals()
     hud_cam.update_camera_and_hud()
 
 app.run()

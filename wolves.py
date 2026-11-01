@@ -181,6 +181,10 @@ def update_wolves():
 
     dt = min(max(time.dt, 0.0), 0.05)
 
+    # bounding gait phase INTEGRATED in physics (render-only WolfVisuals
+    # reads it): stalkers sit flat via the speed scaling in WolfVisuals.render
+    wolf_hop_phase[:] += wolf_speed * 1.4 * dt
+
     f2 = np.stack([np.sin(wolf_yaw), np.cos(wolf_yaw)], axis=1)   # (W,2)
     r2 = np.stack([np.cos(wolf_yaw), -np.sin(wolf_yaw)], axis=1)
 
@@ -486,11 +490,11 @@ class WolfVisuals(Entity):
         import foxes
         _dust_pool = foxes.DustPool(WOLF_DUST_POOL, base_size=0.55)
 
-    def update(self):
-        update_wolves()
+    def render(self):
+        # physics runs in simstep.sim_step -> update_wolves (which integrates
+        # wolf_hop_phase); this is mesh rebuild ONLY
         # speed-scaled bounding hop: stalkers sit flat, sprinters bound
         speed = wolf_speed
-        wolf_hop_phase[:] += speed * 1.4 * min(max(time.dt, 0.0), 0.05)
         hop = np.abs(np.sin(wolf_hop_phase)) * np.clip(speed / WOLF_BOOST_SPEED, 0.0, 1.0) * 0.6
         yaws = wolf_yaw
         c, s = np.cos(yaws), np.sin(yaws)

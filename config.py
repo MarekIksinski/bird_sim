@@ -230,6 +230,13 @@ _FOG_RANGE = (50, int(3.0 / _fd)) if 0 < _fd < 1 else ((50, 450) if _fd >= 1 els
 # --- camera/HUD constants ---
 # config start_camera: 1 fixed wide, 2 pack chase (best hawk), 3 first-person (selected)
 START_CAMERA = int(_get('game', 'start_camera', 4))
+
+# --- 1i. DAY/NIGHT CYCLE (daynight.py) ---
+# One cycle = day_seconds of light + night_seconds of dark; the dawn/dusk
+# ramps are smoothsteps of transition_seconds width at both edges.
+DAY_SECONDS = float(_get('daynight', 'day_seconds', 180.0))
+NIGHT_SECONDS = float(_get('daynight', 'night_seconds', 120.0))
+TRANSITION_SECONDS = float(_get('daynight', 'transition_seconds', 15.0))
 # Dynamic FOV warp: widens toward BOOST_FOV as the tracked hawk approaches boost speed.
 BASE_FOV = _get('hawk', 'base_fov', 90.0)
 BOOST_FOV = _get('hawk', 'boost_fov', 110.0)

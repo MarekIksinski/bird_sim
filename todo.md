@@ -18,33 +18,26 @@ Agreed design (2026-10-31):
   (all four networks already shape-reset at b596b12, so no live lineage rides into Task 3).
 - evolution/ copied to evolution_backup/ (gitignored, commit 93a1c5b). Rollback path exists.
 
-## Task 1 — daynight.py (new layer, bottom of the stack)
-1. Module state: `day_phase` (float32 accumulator), `day_number` (int).
-   `day_phase += dt * (2*PI / cycle)` — NEVER feed Ursina `time.time()` into oscillators (epoch quantization bug).
-   dt capped like everywhere else (0.05).
-2. Config `[daynight]`:
-   - `day_seconds = 180`, `night_seconds = 120` (asymmetric ramp),
-   - `transition_seconds` (dawn/dusk smoothstep width, ~15 s default).
-3. Exported scalars every layer reads:
-   - `light_level` 0..1 (smoothstep ramps at dawn/dusk, flat 1 midday, flat ~0 midnight),
-   - `sun_elevation` (for the later visual sun; derive from phase),
-   - `is_night` helper = light_level below a fixed constant.
-4. Light encoding for NN obs (same style as the stamina sensor): `obs = -1.0 + 2.0 * light_level`
-   (noon +1, midnight -1, tanh-friendly). One shared helper `light_obs()` in daynight.py.
-5. Day phase is NOT checkpointed — every session starts at dawn, day_number resets.
-6. Wire `update_daynight(dt)` into the sim chain (see Task 2's sim_step; before predators/flock update).
+## Task 1 — daynight.py (new layer, bottom of the stack) [DONE 2026-10-31]
+- daynight.py: sim_elapsed (the ONLY physics time source now — flock roost
+  orbit/vertical wave switched off Ursina time.time()), day_phase, day_number,
+  light_level (smoothstep ramps), sun_height, light_obs() = -1 + 2*light.
+- [daynight] toml section live: day 180 / night 120 / transition 15.
+- tools/verify_daynight.py passes (first Ursina-free harness).
+- NOTE: day_number currently only counts; HUD clock is Task 7.
 
-## Task 2 — sim_step() refactor (the real code cost)
-1. Extract the per-frame physics chain — daynight + update_boids_gpu + update_predators +
-   update_player + update_foxes + update_wolves + update_rabbits — into one callable
-   `sim_step(dt)` (new module or main.py), fully independent of Ursina visuals.
-2. Visual updates (FlockVisuals/RabbitVisuals/FoxVisuals/WolfVisuals mesh writes, HUD) stay in the
-   render pass and read state — they must not be the thing that drives physics.
-   NOTE: predators<->flock lazy-import pattern and module-global style (`predators.best_idx`, never
-   `from module import var`) must survive the move.
-3. Ursina `update()` becomes: `sim_step(time.dt)` once + visuals. Offscreen harnesses can later call
-   sim_step directly (keep taskMgr.step() harnesses working for now; migrating them is optional cleanup).
-4. Gate: existing verify_* suite passes bit-comparably before touching day/night behavior.
+## Task 2 — sim_step() refactor [DONE 2026-10-31]
+- simstep.py:sim_step(dt) = daynight -> player -> boids -> rabbits -> foxes -> wolves;
+  sets the shared Ursina Clock dt so existing per-module time.dt reads + harness
+  Clock stubs keep working.
+- Visuals classes: update() -> render() (mesh rebuild ONLY); main.py update()
+  drives sim_step + render pass; update_pack_visuals moved out of
+  update_boids_gpu into the render pass.
+- Hop phases (rabbit/fox/wolf) integrated inside the physics steps (turbo-safe).
+- verify_fox_cams.py re-driven via sim_step (no taskMgr).
+- Gate: verify_refactor segfaults WITHOUT a live X display — pre-existing on
+  baseline (proven via git stash); same for verify_visuals/verify_player (139).
+  With a desktop session open, re-run those three.
 
 ## Task 3 — Light input on all four networks (+1 obs each)
 1. config.py: bump NET_SHAPE inputs: hawk (15->16), STARLING_NET_SHAPE (21->22),

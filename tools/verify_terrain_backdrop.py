@@ -28,9 +28,11 @@ b_hash = hashlib.sha256(terrain.backdrop_hm.tobytes()).hexdigest()
 # pin (play mesh shifted then, NOT by this fix), and the backdrop pin moves
 # to the square deep-floor cutout — the old feathered-center mesh (center ==
 # play-3) is intentionally retired: it was the clipping bug.
-assert h_hash.startswith('35a03c2a52438b5e'), f'heightmap changed: {h_hash}'
-assert b_hash.startswith('73f10d8d51cb6f5b'), f'backdrop_hm changed: {b_hash}'
-print('PASS meshes pinned (heightmap 35a03c2a..., backdrop cutout 73f10d8d...)')
+# RE-RECORDED 2026-10-31: user world retune (seed 7->31, cell 0.8->0.9,
+# amplitude 15->25) intentionally changed both meshes.
+assert h_hash.startswith('654dae6f40d9b26f'), f'heightmap changed: {h_hash}'
+assert b_hash.startswith('491ec7abbd93c7de'), f'backdrop_hm changed: {b_hash}'
+print('PASS meshes pinned (heightmap 654dae6f..., backdrop cutout 491ec7ab...)')
 
 # --- 2. center: play surface wins, backdrop at the deep floor ------------
 hc = terrain.height_at(0.0, 0.0)

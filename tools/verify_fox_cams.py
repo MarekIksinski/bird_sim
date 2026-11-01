@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """verify_fox_cams.py — offscreen check of fox camera modes 5/6.
-Boots Ursina headless, steps real frames via taskMgr.step() (the sim chain
-runs inside FlockVisuals.update -> predators.update_pack -> rabbits/foxes),
-then checks:
+Boots Ursina headless and drives the sim via simstep.sim_step (the
+physics/render split: physics chain lives in simstep, Visuals are
+render-only), then checks:
   - fox_quat() unit norm + pitches UP on rising ground
   - update_foxes() keeps best_fox_idx in range on the best-rate pair
   - keys '6'/'7' select modes 5/6; TAB is fox-aware in fox cams, hawk-aware
@@ -17,11 +17,10 @@ sys.path.insert(0, '/home/marek/Playground/bird_sim')
 os.chdir('/home/marek/Playground/bird_sim')
 
 import numpy as np
-from direct.showbase.ShowBase import taskMgr
 from ursina import Ursina, camera, application
 
 app = Ursina(window_type='offscreen', development_mode=False)
-import config, terrain, flock, rabbits, foxes, predators, player, hud_cam
+import config, terrain, flock, rabbits, foxes, predators, player, hud_cam, simstep
 
 terrain.init_environment()
 flock_viz = flock.FlockVisuals()
@@ -40,9 +39,11 @@ def check(name, cond):
 
 def step(n=1):
     for _ in range(n):
-        taskMgr.step()
-        # main.py wires update_camera_and_hud via its global update();
-        # offscreen we call it explicitly after each frame
+        simstep.sim_step(1.0 / 60.0)   # fixed deterministic dt (no real-frame hitch)
+        # render pass pieces the cameras read (entity sync + HUD), mirroring
+        # main.py's update() tail
+        flock_viz.render(); rabbit_viz.render(); fox_viz.render()
+        predators.update_pack_visuals()
         hud_cam.update_camera_and_hud()
 
 # --- fox_quat sanity: face +Z, see how it pitches to the local slope ---

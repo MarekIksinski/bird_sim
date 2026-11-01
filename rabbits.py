@@ -46,6 +46,12 @@ def update_rabbits():
     # same dt-cap policy as the rest of the sim (no giant teleport on a hitch)
     dt = min(max(time.dt, 0.0), 0.05)
 
+    # hop phase INTEGRATED here (physics cadence, not render cadence):
+    # time.time() in float32 is epoch-scale and freezes the sine (see the
+    # rabbit_phase note at the bottom); per-rabbit integration also keeps
+    # the gait continuous when speed changes.
+    rabbit_phase[:] += np.linalg.norm(rabbit_vel, axis=1) * 2.0 * dt
+
     # distance from each rabbit to the nearest threat: AI pack hawks AND
     # the player hawk (freeze/flee/recover thresholds both react to it)
     d_pack = np.linalg.norm(rabbit_pos[:, None, :] - predators.pack_pos[None, :, :], axis=2).min(axis=1)
@@ -173,14 +179,10 @@ class RabbitVisuals(Entity):
         self.double_sided = True
         self.rabbit_shape = np.array([[0, 0, 0.4], [-0.15, 0, -0.15], [0.15, 0, -0.15]], dtype=np.float32)
 
-    def update(self):
-        update_rabbits()
-        # hop modulation: bounce scales with ground speed -> still rabbits sit flat
+    def render(self):
+        # physics runs in simstep.sim_step -> update_rabbits (which also
+        # integrates rabbit_phase); this is mesh rebuild ONLY
         speed = np.linalg.norm(rabbit_vel, axis=1)
-        # phase INTEGRATED per rabbit (see rabbit_phase note: epoch-scale
-        # time.time() in float32 freezes the sine; and phase continuity
-        # survives speed changes). dt-capped like the physics step.
-        rabbit_phase[:] += speed * 2.0 * min(max(time.dt, 0.0), 0.05)
         # a rabbit that stops mid-hop must settle onto the ground: snap the
         # frozen phase to the nearest multiple of pi (hop = |sin| = 0 there)
         still = speed < 0.01

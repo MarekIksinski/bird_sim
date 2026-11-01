@@ -24,6 +24,7 @@ from config import (NUM_BIRDS, NEIGHBOR_COUNT, SEPARATION_DIST, ROOST_RADIUS,
                     PANIC_MAX_SPEED, GENERATION_SECONDS, COLOR_STARLING,
                     FLOCK_GRAVITY, MIN_BIRD_SPEED, DIVE_SPEED_MULT,
                     CLIMB_SPEED_MULT, STARLING_HIDDEN_LAYERS, MAX_ALTITUDE)
+import daynight
 import predators
 import terrain
 
@@ -176,7 +177,10 @@ def update_boids_gpu():
     # X, x0.79 on Z). The asymmetrical frequencies keep the path from ever
     # closing on itself, so the roost sweeps the map organically. Y rides the
     # terrain AND oscillates on a slow vertical wave: true 3D murmuration.
-    t = time.time() * ROOST_ORBIT_SPEED
+    # Clock source is daynight.sim_elapsed (SIMULATED seconds), NOT Ursina's
+    # time.time(): under turbo substepping wall-clock time lags sim time and
+    # the roost would desync from the generation timer.
+    t = daynight.sim_elapsed * ROOST_ORBIT_SPEED
     wob_r = ROOST_ORBIT_RADIUS * ORBIT_WOBBLE_RADIUS
     new_x = np.cos(t) * ROOST_ORBIT_RADIUS + np.sin(t * 1.37 * ORBIT_WOBBLE_SPEED) * wob_r
     new_z = np.sin(t) * ROOST_ORBIT_RADIUS + np.cos(t * 0.79 * ORBIT_WOBBLE_SPEED) * wob_r
@@ -185,7 +189,7 @@ def update_boids_gpu():
     new_x = float(cp.clip(new_x, -edge, edge))
     new_z = float(cp.clip(new_z, -edge, edge))
     base_altitude = float(terrain.height_at(new_x, new_z)) + ROOST_BASE_ALTITUDE
-    new_y = base_altitude + np.sin(time.time() * VERTICAL_SPEED) * VERTICAL_AMPLITUDE
+    new_y = base_altitude + np.sin(daynight.sim_elapsed * VERTICAL_SPEED) * VERTICAL_AMPLITUDE
     roost_center = cp.array([new_x, new_y, new_z], dtype=cp.float32)
 
     # read flock state once per frame (pack logic needs numpy; boids stay on backend)
@@ -446,8 +450,8 @@ def update_boids_gpu():
     # later; a concentrated raid still pushes the counter over the threshold.
     if CASUALTY_DECAY > 0.0:
         tribe_casualties *= np.exp(np.float32(-CASUALTY_DECAY * min(time.dt, 0.05)))
-
-    predators.update_pack_visuals()
+    # NOTE: predators.update_pack_visuals() moved to main.py's render pass —
+    # physics must not touch entities (turbo substeps would pay it K times).
 
 # --- 4. VISUALS (Same optimized mesh) ---
 class FlockVisuals(Entity):
@@ -459,8 +463,9 @@ class FlockVisuals(Entity):
         self.double_sided = True
         self.bird_shape = np.array([[0, 0, 0.6], [-0.3, 0, -0.3], [0.3, 0, -0.3]], dtype=np.float32)
 
-    def update(self):
-        update_boids_gpu()
+    def render(self):
+        # physics runs in simstep.sim_step -> update_boids_gpu; this is
+        # mesh rebuild ONLY (Visuals no longer drive physics)
         positions = to_cpu(pos_gpu)
         velocities = to_cpu(vel_gpu)
         yaws = np.arctan2(velocities[:, 0], velocities[:, 2])

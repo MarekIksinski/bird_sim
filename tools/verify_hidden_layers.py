@@ -41,8 +41,9 @@ assert predators.GENOME_LEN == exp_gl, (predators.GENOME_LEN, exp_gl)
 exp_sgl = sum(flock.STARLING_NET_SHAPE[i] * flock.STARLING_NET_SHAPE[i+1] + flock.STARLING_NET_SHAPE[i+1]
               for i in range(len(flock.STARLING_NET_SHAPE) - 1))
 assert flock.STARLING_GENOME_LEN == exp_sgl
-assert predators.NET_SHAPE == (15, 32, 16, 4), predators.NET_SHAPE
-assert flock.STARLING_NET_SHAPE == (21, 32, 16, 6), flock.STARLING_NET_SHAPE
+# NO hardcoded shape literals here: the toml-derived asserts above are the
+# contract (user retunes hidden_layers live; a hardcoded expectation breaks
+# on every retune and looks like a code regression).
 print(f'PASS shapes: NET_SHAPE={predators.NET_SHAPE} GENOME_LEN={predators.GENOME_LEN} '
       f'| STARLING_NET_SHAPE={flock.STARLING_NET_SHAPE} SGL={flock.STARLING_GENOME_LEN}')
 

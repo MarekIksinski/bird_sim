@@ -116,6 +116,11 @@ fog_density = 0.024      # visibility falloff
 start_camera = 2          # 1 fixed wide, 2 pack-chase (best hawk), 3 AI first-person (TAB cycles), 4 player chase, 5 player first-person, 6 fox chase (TAB cycles fox), 7 fox first-person, 8 wolf chase (TAB cycles wolf), 9 wolf first-person
 force_cpu = false         # true = skip GPU even if VRAM looks free
 
+[daynight]
+day_seconds = 180.0       # lit part of one cycle (s)
+night_seconds = 120.0     # dark part of one cycle (s)
+transition_seconds = 15.0 # dawn/dusk smoothstep ramp width (s)
+
 [rabbits]
 num_rabbits = 400           # ground prey population (pure NumPy state machine)
 num_burrows = 45            # invisible burrows (physics only, never rendered)

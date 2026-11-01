@@ -228,6 +228,10 @@ def update_foxes():
 
     dt = min(max(time.dt, 0.0), 0.05)
 
+    # bounding gait phase INTEGRATED in physics (render-only FoxVisuals
+    # reads it): creepers sit flat via the speed scaling in FoxVisuals.render
+    fox_hop_phase[:] += fox_speed * 1.6 * dt
+
     # --- observations ---
     diff = rabbits.rabbit_pos[None, :, :] - fox_pos[:, None, :]   # (F,R,3)
     dist = np.linalg.norm(diff, axis=2)                           # (F,R)
@@ -486,11 +490,11 @@ class FoxVisuals(Entity):
         self.fox_shape = np.array([[0, 0, 0.85], [-0.28, 0, -0.45], [0.28, 0, -0.45]], dtype=np.float32)
         _dust_pool = DustPool(FOX_DUST_POOL)
 
-    def update(self):
-        update_foxes()
+    def render(self):
+        # physics runs in simstep.sim_step -> update_foxes (which integrates
+        # fox_hop_phase); this is mesh rebuild ONLY
         # speed-scaled bounding hop: creepers sit flat, sprinters bound
         speed = fox_speed
-        fox_hop_phase[:] += speed * 1.6 * min(max(time.dt, 0.0), 0.05)
         hop = np.abs(np.sin(fox_hop_phase)) * np.clip(speed / FOX_BOOST_SPEED, 0.0, 1.0) * 0.5
         yaws = fox_yaw
         c, s = np.cos(yaws), np.sin(yaws)

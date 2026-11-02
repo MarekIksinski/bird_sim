@@ -682,7 +682,7 @@ def evolve_generation():
     slot0_fit = float(fitness[0])
     slot0_kills = int(gen_kills[0])
     import flock   # lazy: flock's counters ride the same summary line
-    log_event(f"[evolution] gen {generation}: best fitness {fitness[order[0]]:.0f} "
+    log_event(f"[evolution] gen {generation} (day {daynight.day_number + 1}): best fitness {fitness[order[0]]:.0f} "
               f"(hawk #{order[0]}), mean {fitness.mean():.0f} | "
               f"kills best {gen_kills[order[0]]}, total {gen_kills.sum()} | "
               + (f"HoF CROWNED at {hof_fitness:.0f}" if crowned

@@ -28,7 +28,7 @@ with open(predators._LOG_FILE) as fh:
     lines = fh.read().splitlines()
 evo = [l for l in lines if '[evolution]' in l]
 assert len(evo) == 1, evo
-for token in ('gen 1:', 'best fitness 9 (hawk #1)', 'mean 4', 'kills best 2, total 4',
+for token in ('gen 1 (day 1):', 'best fitness 9 (hawk #1)', 'mean 4', 'kills best 2, total 4',
               'HoF CROWNED at 9', 'max_spd 6.33', 'flock_evos 0'):
     assert token in evo[0], f'missing {token!r} in: {evo[0]}'
 print('PASS evolution line enriched:', evo[0][20:])

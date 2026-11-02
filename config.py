@@ -231,7 +231,14 @@ _FOG_RANGE = (50, int(3.0 / _fd)) if 0 < _fd < 1 else ((50, 450) if _fd >= 1 els
 # config start_camera: 1 fixed wide, 2 pack chase (best hawk), 3 first-person (selected)
 START_CAMERA = int(_get('game', 'start_camera', 4))
 
-# --- 1i. DAY/NIGHT CYCLE (daynight.py) ---
+# --- 1j. IDLE TURBO-TRAIN (simstep.py) ---
+# K physics substeps per rendered frame (fixed dt, never bigger dt) while
+# the player is idle; physics/fitness identical per sim-second at any K.
+TURBO_FACTOR = int(_get('turbo', 'turbo_factor', 8))
+TURBO_IDLE_SECONDS = float(_get('turbo', 'turbo_idle_seconds', 10.0))
+TURBO_MAX_CATCHUP = float(_get('turbo', 'turbo_max_catchup', 0.25))
+
+# --- 1k. DAY/NIGHT CYCLE (daynight.py) ---
 # One cycle = day_seconds of light + night_seconds of dark; the dawn/dusk
 # ramps are smoothsteps of transition_seconds width at both edges.
 DAY_SECONDS = float(_get('daynight', 'day_seconds', 180.0))

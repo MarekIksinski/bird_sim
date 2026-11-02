@@ -21,12 +21,30 @@ import predators
 import flock
 import foxes
 import wolves
+import daynight
+import simstep
 import player
 
 hawk_info = None
 gen_text = None
 kill_counter = None
 _last_gen_line = ''
+
+
+def _day_clock_str():
+    """HUD day clock: Day N + HH:MM mapped from the sim clock so the
+    300 s cycle reads as a 24 h day (dawn at t=0 ~ 06:00). The turbo
+    badge rides along so a jumped clock is never a mystery (Task 6/7)."""
+    # t=0 is mid-dawn -> offset a quarter cycle so mid-dawn = 06:00
+    frac = ((daynight.day_phase + daynight.CYCLE_SECONDS * 0.25)
+            % daynight.CYCLE_SECONDS) / daynight.CYCLE_SECONDS
+    hh = int(frac * 24)
+    mm = int((frac * 24 - hh) * 60)
+    icon = 'day' if daynight.light_level > 0.6 else ('night' if daynight.light_level < 0.3 else 'dusk')
+    s = f'Day {daynight.day_number + 1} [{icon} {hh:02d}:{mm:02d}]'
+    if simstep.turbo_active:
+        s += f' [TURBO x{config.TURBO_FACTOR}]'
+    return s
 
 # --- 5. CAMERA ---
 # config start_camera: 1 fixed wide, 2 pack chase (best hawk), 3 first-person
@@ -270,7 +288,8 @@ def update_camera_and_hud():
     _line = (f'Gen: {predators.generation} | Time: {GENERATION_SECONDS - predators.gen_elapsed:.1f}s | '
              f'Best Kills: {int(predators.gen_kills[predators.best_idx])} | Flock Evo: {flock.starling_evolutions} | '
              f'Fox Evo: {foxes.fox_evolutions} | Wolf Evo: {wolves.wolf_evolutions} | '
-             f'Stamina: {int(round(_stam * 100))}%' + (' [COOL]' if _cool else ''))
+             f'Stamina: {int(round(_stam * 100))}%' + (' [COOL]' if _cool else '') +
+             ' | ' + _day_clock_str())
     if _line != _last_gen_line:
         _last_gen_line = _line
         gen_text.text = _line

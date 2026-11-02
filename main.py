@@ -103,14 +103,19 @@ sun.update_bounds()
 
 # --- Ursina global callbacks (delegated; Ursina polls these by name) ---
 def input(key):
+    simstep.note_activity()   # any key event drops auto-turbo instantly
+    if key == 't':
+        simstep.toggle_turbo()
     hud_cam.handle_input(key)
 
 def update():
-    # physics: ONE sim step per rendered frame (simstep.sim_step owns the
-    # whole chain; Visuals classes are render-only now). Turbo training
-    # (todo Task 6) = K sim_step calls per frame with a fixed dt.
-    simstep.sim_step(time.dt)
-    # render pass: mesh rebuilds + entity sync + camera/HUD
+    # physics: fixed-dt substeps via simstep (turbo = K substeps per frame,
+    # never bigger dt; physics identical per sim-second at any speed).
+    n = simstep.begin_frame(time.dt, hud_cam.curr_mode)
+    for _ in range(n):
+        simstep.sim_step(simstep.FIXED_DT)
+    # render pass: mesh rebuilds + entity sync + camera/HUD (once per
+    # rendered frame, not per substep)
     flock_viz.render()
     rabbit_viz.render()
     fox_viz.render()

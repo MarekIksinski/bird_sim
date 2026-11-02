@@ -39,7 +39,7 @@ Agreed design (2026-10-31):
   baseline (proven via git stash); same for verify_visuals/verify_player (139).
   With a desktop session open, re-run those three.
 
-## Task 3 — Light input on all four networks (+1 obs each)
+## Task 3 — Light input on all four networks (+1 obs each) [DONE 2026-11-01, commit 167d0f6]
 1. config.py: bump NET_SHAPE inputs: hawk (15->16), STARLING_NET_SHAPE (21->22),
    FOX_NET_SHAPE (15->16), WOLF_NET_SHAPE (16->17). GENOME_LEN/WGL/FGL recompute automatically.
 2. Observation sites append `light_obs()` as the LAST obs (append, don't renumber existing obs):
@@ -52,7 +52,7 @@ Agreed design (2026-10-31):
    if/else after the hawk guard must still run).
 4. Weight hygiene unchanged: fresh random init + the existing decay/clip applies.
 
-## Task 4 — Hard ecology (physical, not learned)
+## Task 4 — Hard ecology (physical, not learned) [DONE 2026-11-01, commit 781739b; verify_night_ecology.py 12/12]
 All factors read `[daynight]` config; modulation applies to PHYSICS only, never to NN weights/obs
 (the networks get light only as the one learned input).
 1. Starlings (flock.py): roost pull strength x`roost_night_mult` and cruise clamp x`cruise_night_mult`
@@ -69,7 +69,7 @@ All factors read `[daynight]` config; modulation applies to PHYSICS only, never 
 5. Beware the rabbit-threshold slope rule: any rescale of d_fox_raw must keep slope 1:1 beyond
    eff_freeze_r or distant foxes fake Freeze.
 
-## Task 5 — Generation length + retune watch
+## Task 5 — Generation length + retune watch [DONE 2026-11-01: generation_seconds 90 -> 600; retune watch still OPEN after ~10 long gens]
 1. `[pack] generation_seconds = 600` (2 full cycles per hawk lifetime).
 2. Known constants tuned against ~45 s generations — expect retunes after first long runs:
    - `[flock_nn] casualty_decay` (~23 min half-life) + `replace_deaths`: tribes will accumulate
@@ -79,7 +79,7 @@ All factors read `[daynight]` config; modulation applies to PHYSICS only, never 
    - Fitness magnitudes scale ~13x; history.csv y-axis will jump — that's expected, not a bug.
 3. These are retune-later knobs, not code changes — flag values in the log review after ~10 gens.
 
-## Task 6 — Idle turbo-train
+## Task 6 — Idle turbo-train [DONE 2026-11-01: simstep.begin_frame fixed-dt accumulator, 't' toggle, verify_turbo.py 13/13. NOTE: deviates from plan item 3 — visuals still render once per FRAME (not every K-th substep); physics chain already decoupled so this is the natural frame cadence]
 1. Definition of idle: no key event for `turbo_idle_seconds` (default ~10) AND curr_mode is a fixed
    camera (0). Any keypress or a chase/FP camera -> instant 1x. Explicit toggle key (default `t`)
    forces turbo on/off regardless (spectator fast-forward).
@@ -93,12 +93,12 @@ All factors read `[daynight]` config; modulation applies to PHYSICS only, never 
 5. Ursina's `time.dt` spike after a heavy turbo frame: camera lerps keep the existing
    `cdt = min(max(time.dt,0),0.1)` clamp; sim_step uses its own fixed dt and is immune.
 
-## Task 7 — HUD clock
+## Task 7 — HUD clock [DONE 2026-11-01: gen_text 'Day N [day/dusk/night HH:MM]' + [TURBO xK] badge; evolution.log gains '(day N)']
 1. hud_cam gen_text: `Day N  HH:MM` derived from day_phase (map phase to 24 h clock) +
    day/night glyph or light bar. Read daynight module state each frame.
 2. evolution.log `[evolution]` line gains `day N` so kill records correlate with time-of-day.
 
-## Task 8 — Harnesses
+## Task 8 — Harnesses [DONE 2026-11-01: verify_daynight (updated for straddling dawn ramp), verify_night_ecology.py NEW, verify_turbo.py NEW; shape asserts config-derived; physics harnesses pin_full_day()
 1. New `tools/verify_daynight.py`:
    - phase monotonic + wraps, day/night asymmetry matches toml (180 s light vs 120 s dark),
    - transition smoothstep within `transition_seconds`,

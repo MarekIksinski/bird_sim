@@ -175,6 +175,7 @@ first-person, `4` player chase, `5` player first-person, `6` fox chase,
 | 1 … 9 | switch camera mode (see above) |
 | TAB | cycle the tracked entity: the AI hawk, or the fox in the fox cams, or the wolf in the wolf cams |
 | R | respawn the player hawk (remappable: `[player] reset_keys`) |
+| T | toggle turbo fast-forward (see Day/night & turbo) |
 | ESC | quit |
 
 Player flight (default bindings, all remappable in `[player]`):
@@ -186,6 +187,28 @@ Player flight (default bindings, all remappable in `[player]`):
 | Q / E | yaw left / right |
 | Shift / Ctrl | throttle boost / slow (release = cruise; boost runs on the stamina tank — empty = locked out until recharged) |
 
+## Day/night cycle & idle turbo
+
+One cycle = `[daynight] day_seconds + night_seconds` (default 180 + 120 s)
+with smoothstep dawn/dusk ramps (`transition_seconds`). The clock is
+SIMULATED time (`daynight.sim_elapsed`), never wall-clock — turbo
+substepping and pausing can't desync it. The light level is a NN input on
+all four networks (hawk 16, starling 22, fox 16, wolf 17 sensors:
+-1 midnight … +1 noon), so night hunting is learnable, and hard ecology
+factors (applied at midnight, scaled by the ramps, not learned) make it
+physically real: starling roost pull x3 + cruise cap x0.7 (the murmuration
+settles at dusk), hawk/player speed targets x0.85 (the MIN_FLIGHT_SPEED
+floor still wins), fox/wolf threat radii x1.2 (rabbits sense them sooner).
+The HUD shows `Day N [day/dusk/night HH:MM]` and evolution.log records
+`(day N)` per generation.
+
+Idle turbo: no key event for `[turbo] turbo_idle_seconds` in the fixed
+camera -> the sim runs `turbo_factor` physics substeps per rendered frame
+at a FIXED dt (physics/fitness are identical per simulated second at any
+speed; only wall-clock rate changes). Any keypress drops it instantly;
+`T` forces it on/off in any camera (spectator fast-forward). The HUD badge
+`[TURBO xK]` makes a jumping clock never a mystery.
+
 ## Files / architecture
 
 Strict bottom-up layering (each module only imports layers below it):
@@ -193,6 +216,11 @@ Strict bottom-up layering (each module only imports layers below it):
 ```
 backend.py    --cpu / FORCE_CPU handling, CuPy VRAM probe, cp / np / to_cpu
 config.py     config.toml -> all uppercase constants + derived values
+daynight.py   simulated day/night clock (sim_elapsed, light_level,
+              light_obs NN sensor, night_factor ecology scale) — no Ursina
+simstep.py    one sim step (fixed-dt physics chain) + idle-turbo scheduler
+              (begin_frame/note_activity/toggle_turbo) — layer above all
+              physics modules, below main.py's visual wiring
 math3d.py     pure NumPy batched quaternion math (_q_mul_b, _slerp_np, ...)
 terrain.py    heightmaps + height_at at import; sky/triplanar terrain/
               backdrop + props (80 Tree.glb model trees, 120
@@ -346,6 +374,19 @@ main.py       entrypoint orchestrator (init order + global input/update)
   bias, and the sprint-dust pools emit only above cruise*factor, plateau
   below the pool cap (fade + recycle proven), and land exactly 0.5m behind
   the animal. Run: `.venv/bin/python tools/verify_visuals.py`
+- `tools/verify_daynight.py` — day/night clock gate (no Ursina boot):
+  phase monotonic + wraps, straddling dawn ramp continuous across the
+  wrap, lit fraction == day_seconds/cycle, light_obs range, fixed-dt
+  phase invariance. Run: `.venv/bin/python tools/verify_daynight.py`
+- `tools/verify_night_ecology.py` — hard night-factor gate: starling
+  cruise cap and hawk/player speed targets settle at their midnight
+  multipliers (floors win where they must), roost pull x3 at midnight,
+  rabbit threat-map anchors scale without breaking the beyond-freeze
+  1:1 slope rule. Run: `.venv/bin/python tools/verify_night_ecology.py`
+- `tools/verify_turbo.py` — turbo scheduler gate (no Ursina boot): 1x
+  steady state = 1 substep/frame, turbo = K substeps/frame, frame-spike
+  deficit cap, idle/auto/forced keypress rules, dt never > FIXED_DT.
+  Run: `.venv/bin/python tools/verify_turbo.py`
 - `tools/gen_rock_texture.py` — regenerates `assets/textures/rock_procedural.png`
   (seamless numpy-fBm rock/cliff texture for the triplanar side; prints a
   seam-continuity self-check). Run: `.venv/bin/python tools/gen_rock_texture.py`

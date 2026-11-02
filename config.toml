@@ -118,6 +118,11 @@ fog_density = 0.024      # visibility falloff
 start_camera = 2          # 1 fixed wide, 2 pack-chase (best hawk), 3 AI first-person (TAB cycles), 4 player chase, 5 player first-person, 6 fox chase (TAB cycles fox), 7 fox first-person, 8 wolf chase (TAB cycles wolf), 9 wolf first-person
 force_cpu = false         # true = skip GPU even if VRAM looks free
 
+[turbo]
+turbo_factor = 8            # K: sim substeps per rendered frame while turbo is on
+turbo_idle_seconds = 10.0   # no key event for this long (fixed camera) -> auto turbo
+turbo_max_catchup = 0.25    # wall-time deficit cap per frame (s); no spiral of death
+
 [daynight]
 day_seconds = 180.0       # lit part of one cycle (s)
 night_seconds = 120.0     # dark part of one cycle (s)

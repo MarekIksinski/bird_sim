@@ -196,11 +196,16 @@ class DustPool:
 
     def step(self, dt):
         """Age every live pip: grow + fade linearly over DUST_LIFETIME,
-        then disable until the round-robin cursor reuses the slot."""
-        for i, e in enumerate(self.pips):
-            if self.age[i] >= DUST_LIFETIME:
-                continue
-            self.age[i] += dt
+        then disable until the round-robin cursor reuses the slot.
+        Vectorized age advance + iterate ONLY the live pips (render-pass
+        only — called once per frame from FoxVisuals/WolfVisuals.render,
+        never from physics substeps)."""
+        alive = self.age < DUST_LIFETIME
+        if not alive.any():
+            return
+        self.age[alive] += dt
+        for i in np.nonzero(alive)[0]:
+            e = self.pips[i]
             t = self.age[i] / DUST_LIFETIME
             if t >= 1.0:
                 self.age[i] = 1e9
@@ -347,7 +352,9 @@ def update_foxes():
             for k in range(fi.size):
                 _dust_pool.emit(rear[k])
             _dust_cooldown[fi] = DUST_INTERVAL
-        _dust_pool.step(dt)
+        # NOTE: _dust_pool.step() moved to FoxVisuals.render() — pip
+        # scale/color setters are entity work, once per rendered frame,
+        # never per physics substep.
 
     # --- pair scoring (per-fox rates summed per pair) ---
     prox = (dmin < FOX_PROXIMITY_RADIUS).astype(np.float32) * 0.5
@@ -495,6 +502,10 @@ class FoxVisuals(Entity):
         _dust_pool = DustPool(FOX_DUST_POOL)
 
     def render(self):
+        # dust pips age/fade here (once per rendered frame with the WALL
+        # frame time; physics substeps never touch entities)
+        if _dust_pool is not None:
+            _dust_pool.step(time.dt)
         # physics runs in simstep.sim_step -> update_foxes (which integrates
         # fox_hop_phase); this is mesh rebuild ONLY
         # speed-scaled bounding hop: creepers sit flat, sprinters bound

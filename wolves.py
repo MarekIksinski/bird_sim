@@ -305,7 +305,8 @@ def update_wolves():
             for k in range(wi.size):
                 _dust_pool.emit(rear[k])
             _dust_cooldown[wi] = DUST_INTERVAL
-        _dust_pool.step(dt)
+        # NOTE: _dust_pool.step() moved to WolfVisuals.render() (entity
+        # work once per rendered frame, not per physics substep).
 
     # --- catches: foxes (big meal) and rabbits (snack) ---
     # Fox catch: fresh distances (post-integration) so a wolf that ran the
@@ -495,6 +496,10 @@ class WolfVisuals(Entity):
         _dust_pool = foxes.DustPool(WOLF_DUST_POOL, base_size=0.55)
 
     def render(self):
+        # dust pips age/fade here (once per rendered frame with the WALL
+        # frame time; physics substeps never touch entities)
+        if _dust_pool is not None:
+            _dust_pool.step(time.dt)
         # physics runs in simstep.sim_step -> update_wolves (which integrates
         # wolf_hop_phase); this is mesh rebuild ONLY
         # speed-scaled bounding hop: stalkers sit flat, sprinters bound

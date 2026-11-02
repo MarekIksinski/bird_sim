@@ -35,6 +35,10 @@ import terrain
 # argsort/neighbor chain then runs in double precision (2x the memory: 72MB
 # vs 36MB per matrix at 3000 birds, and far slower on consumer GPUs).
 pos_gpu = (cp.random.random((NUM_BIRDS, 3)).astype(cp.float32) * 40 - 20) + cp.array([0, ROOST_BASE_ALTITUDE, 0], dtype=cp.float32)
+# render cache (CPU copies refreshed at the end of every update_boids_gpu;
+# FlockVisuals.render() reuses them — see the render-cache note there)
+last_pos_np = None
+last_vel_np = None
 vel_gpu = cp.random.random((NUM_BIRDS, 3)).astype(cp.float32) - 0.5
 vel_gpu = vel_gpu / cp.linalg.norm(vel_gpu, axis=1, keepdims=True) * MAX_SPEED
 
@@ -445,7 +449,9 @@ def update_boids_gpu():
     # boundary scrape: hugging the arena walls (within 25m of the soft
     # wall line on X/Z) or the ceiling (within 10m of MAX_ALTITUDE) costs
     # 1.5/s, so the Moran process selects for tribes that evade INWARD.
-    pos_clamped_np = to_cpu(pos_gpu)
+    pos_clamped_np = to_cpu(pos_gpu)   # FINAL pos of this step: pos_gpu is
+    # never written again below, so this single transfer doubles as the
+    # render cache (last_pos_np) instead of a second to_cpu in render().
     edge_np = np.minimum(half - np.abs(pos_clamped_np[:, 0]),
                          half - np.abs(pos_clamped_np[:, 2]))
     boundary_scrape_np = ((edge_np < 25.0)
@@ -460,6 +466,14 @@ def update_boids_gpu():
     # later; a concentrated raid still pushes the counter over the threshold.
     if CASUALTY_DECAY > 0.0:
         tribe_casualties *= np.exp(np.float32(-CASUALTY_DECAY * min(time.dt, 0.05)))
+
+    # --- render cache: each to_cpu() is a SYNCHRONOUS device->host stall;
+    # without this, FlockVisuals.render() paid two extra PCIe transfers per
+    # frame. pos_gpu/vel_gpu are final at this point (nothing below writes
+    # them), so render() reuses these arrays instead of re-fetching.
+    global last_pos_np, last_vel_np
+    last_pos_np = pos_clamped_np
+    last_vel_np = to_cpu(vel_gpu)
     # NOTE: predators.update_pack_visuals() moved to main.py's render pass —
     # physics must not touch entities (turbo substeps would pay it K times).
 
@@ -475,9 +489,11 @@ class FlockVisuals(Entity):
 
     def render(self):
         # physics runs in simstep.sim_step -> update_boids_gpu; this is
-        # mesh rebuild ONLY (Visuals no longer drive physics)
-        positions = to_cpu(pos_gpu)
-        velocities = to_cpu(vel_gpu)
+        # mesh rebuild ONLY (Visuals no longer drive physics). The CPU
+        # copies come from the update_boids_gpu render cache — re-fetching
+        # via to_cpu here would add two sync PCIe stalls per frame.
+        positions = last_pos_np if last_pos_np is not None else to_cpu(pos_gpu)
+        velocities = last_vel_np if last_vel_np is not None else to_cpu(vel_gpu)
         yaws = np.arctan2(velocities[:, 0], velocities[:, 2])
         c, s = np.cos(yaws), np.sin(yaws)
         verts = np.tile(self.bird_shape, (NUM_BIRDS, 1, 1))

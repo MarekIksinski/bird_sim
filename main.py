@@ -26,6 +26,9 @@ evolution, so `from module import var` would silently go stale.
 # backend first: strips --cpu from sys.argv and runs the CuPy VRAM probe
 # BEFORE Ursina sees the command line or anything allocates arrays.
 import backend
+from time import perf_counter as _perf_counter   # wall budget for turbo
+                                                 # substep loop (ursina's
+                                                 # `time` has no perf_counter)
 from config import _FOG_RANGE, SHADOW_BIAS, SHADOW_MAP_SIZE
 
 from ursina import Ursina, Entity, Vec2, Vec3, scene, time
@@ -111,11 +114,24 @@ def input(key):
 def update():
     # physics: fixed-dt substeps via simstep (turbo = K substeps per frame,
     # never bigger dt; physics identical per sim-second at any speed).
-    n = simstep.begin_frame(time.dt, hud_cam.curr_mode)
+    # sim_step overwrites the shared Clock's dt (physics modules read it) —
+    # keep the WALL frame time for the render pass + HUD below and restore
+    # it before they run.
+    wall_dt = time.dt
+    n = simstep.begin_frame(wall_dt, hud_cam.curr_mode)
+    _t0 = _perf_counter()
     for _ in range(n):
         simstep.sim_step(simstep.FIXED_DT)
+        # turbo frame budget: run as many substeps as the hardware can
+        # afford this frame, then drop the rest (zero the accumulator) —
+        # turbo must never drag the interactive framerate under ~30fps.
+        if simstep.turbo_active and _perf_counter() - _t0 > 0.030:
+            simstep._accum = 0.0
+            break
+    time.dt = wall_dt
     # render pass: mesh rebuilds + entity sync + camera/HUD (once per
     # rendered frame, not per substep)
+    player.update_player_visuals()
     flock_viz.render()
     rabbit_viz.render()
     fox_viz.render()

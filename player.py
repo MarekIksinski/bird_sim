@@ -258,7 +258,13 @@ def update_player():
         print("[nan-guard] player went non-finite; resetting")
         reset_player()
 
-    # --- sync entity ---
+    # --- entity sync moved to update_player_visuals(): physics must not
+    # touch entities (turbo substeps would pay it K times per frame) ---
+
+
+def update_player_visuals():
+    """Render-pass only: sync the player hawk entity (called once per
+    rendered frame from main.py, NOT from update_player)."""
     if player_entity is not None:
         player_entity.position = Vec3(*player_pos)
         player_entity.quaternion = PQuat(player_q[3], player_q[0], player_q[1], player_q[2])

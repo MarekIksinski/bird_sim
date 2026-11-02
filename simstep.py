@@ -40,7 +40,8 @@ FIXED_DT = 1.0 / 60.0
 #   any keypress drops auto-turbo instantly (forced survives, 't' off)
 turbo_active = False
 _turbo_forced = False
-_last_activity = 0.0
+_last_activity = None   # anchored on the first begin_frame (ursina clock
+                        # may not be live at import)
 _accum = 0.0
 
 
@@ -66,7 +67,9 @@ def begin_frame(wall_dt, curr_mode):
     fixed-dt accumulator at 1x or TURBO_FACTOR x and returns the number
     of sim_step(FIXED_DT) substeps to run. Physics per simulated second
     is identical at any speed — turbo only changes wall-clock rate."""
-    global _accum, turbo_active
+    global _accum, turbo_active, _last_activity
+    if _last_activity is None:
+        _last_activity = _clock.time()   # anchor idle timing to first frame
     wall_dt = min(max(wall_dt, 0.0), 0.1)   # Ursina frame-spike clamp
     if not _turbo_forced:
         idle = (_clock.time() - _last_activity) >= config.TURBO_IDLE_SECONDS
@@ -77,6 +80,14 @@ def begin_frame(wall_dt, curr_mode):
     _accum = min(_accum, config.TURBO_MAX_CATCHUP)
     n = int(_accum / FIXED_DT)
     _accum -= n * FIXED_DT
+    # 1x SPIRAL GUARD: at 1x a slow frame (startup shaders, first mesh
+    # rebuild) must NEVER bank multi-substep catch-up — 6 heavy steps
+    # make the NEXT frame slow too, and the sim locks itself into a
+    # spiral of death at a fraction of realtime. One step max, drop the
+    # remainder: at 1x losing sim-time beats never catching up.
+    if not turbo_active and n > 1:
+        n = 1
+        _accum = 0.0
     return n
 
 

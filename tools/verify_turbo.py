@@ -64,6 +64,20 @@ n_spike = simstep.begin_frame(5.0, 1)   # alt-tab return spike
 check(f'5 s spike capped ({n_spike} substeps, cap {config.TURBO_MAX_CATCHUP/FIX:.0f})',
       n_spike <= int(config.TURBO_MAX_CATCHUP / FIX) + 1)
 
+# ---------- 3b. 1x spiral guard: NEVER more than 1 substep at 1x ----------
+simstep._accum = 0.0
+simstep.turbo_active = False
+simstep._turbo_forced = False
+n_1x_spike = simstep.begin_frame(0.1, 1)   # slow frame at 1x
+check('1x spiral guard: heavy frame yields at most 1 substep', n_1x_spike == 1)
+check('1x spiral guard drops the banked remainder', simstep._accum == 0.0)
+# and the guard must not fire in turbo mode
+simstep._accum = 0.0
+simstep.toggle_turbo()
+n_turbo_spike = simstep.begin_frame(0.1, 1)
+check(f'turbo keeps multi-substep catch-up ({n_turbo_spike})', n_turbo_spike > 1)
+simstep.toggle_turbo()
+
 # ---------- 4. idle rule ----------
 simstep._accum = 0.0
 simstep._last_activity = 0.0

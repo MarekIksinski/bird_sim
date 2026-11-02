@@ -204,7 +204,8 @@ class RabbitVisuals(Entity):
         verts[:, :, 2] = -x * s[:, None] + z * c[:, None]
         verts += rabbit_pos[:, None, :]
         verts[:, :, 1] += hop[:, None]
-        self.model.vertices = verts.reshape(-1, 3).tolist()
+        # flat float32 NumPy fast path (see FlockVisuals.render note)
+        self.model.vertices = verts.reshape(-1)
         self.model.generate()
 
 # Hop phase accumulator: time.time() is epoch-scale (~1.8e9) and

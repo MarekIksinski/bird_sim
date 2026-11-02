@@ -504,5 +504,9 @@ class FlockVisuals(Entity):
         verts[:, :, 0] = x * c[:, None] + z * s[:, None]
         verts[:, :, 2] = -x * s[:, None] + z * c[:, None]
         verts += positions[:, None, :]
-        self.model.vertices = verts.reshape(-1, 3).tolist()
+        # FLAT float32 NumPy (no .tolist()): ursina's _ravel sees
+        # isinstance(np.float32, numbers.Real) -> uploads via memoryview
+        # straight into the GeomVertexData; a Python list paid thousands
+        # of allocations per frame for 3000 birds.
+        self.model.vertices = verts.reshape(-1)
         self.model.generate()

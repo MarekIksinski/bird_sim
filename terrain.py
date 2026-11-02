@@ -13,7 +13,8 @@ from ursina import Entity, Mesh, Sky, color, load_texture, scene, Shader, Vec2, 
 
 from ursina.shaders import triplanar_shader
 
-from config import (TERRAIN_SIZE, TERRAIN_CELL, TERRAIN_RES, TERRAIN_AMP,
+from config import (TERRAIN_SIZE, TERRAIN_CELL, TERRAIN_RES, TERRAIN_MESH_RES,
+                    TERRAIN_AMP,
                     TERRAIN_SEED, ROOST_CLEAR_RADIUS, BACKDROP_SIZE,
                     BACKDROP_AMP, BACKDROP_RES,
                     COLOR_FOG, COLOR_TREE_TRUNK, COLOR_TREE_CROWN,
@@ -76,22 +77,30 @@ def _play_height_at(x, z):
             hm[j + 1, i] * (1 - tu) * tv + hm[j + 1, i + 1] * tu * tv)
 
 def build_terrain_mesh():
-    verts = np.zeros((TERRAIN_RES + 1, TERRAIN_RES + 1, 3), dtype=np.float32)
-    lin = np.linspace(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2, TERRAIN_RES + 1)
+    # VISUAL mesh only: sampled onto the TERRAIN_MESH_RES grid (stride
+    # picks from the full-resolution heightmap — no smoothing, so the
+    # rendered surface is a subset of the physics surface). heightmap and
+    # height_at() stay at full TERRAIN_RES: physics + harness pins 100%
+    # identical, the GPU just draws 10x fewer triangles.
+    MRES = TERRAIN_MESH_RES
+    idx = np.linspace(0, TERRAIN_RES, MRES + 1).round().astype(np.int64)
+    hm = heightmap[np.ix_(idx, idx)]
+    verts = np.zeros((MRES + 1, MRES + 1, 3), dtype=np.float32)
+    lin = np.linspace(-TERRAIN_SIZE / 2, TERRAIN_SIZE / 2, MRES + 1)
     verts[:, :, 0] = lin[None, :]
-    verts[:, :, 1] = heightmap
+    verts[:, :, 1] = hm
     verts[:, :, 2] = lin[:, None]
     tri = []
-    for j in range(TERRAIN_RES):
-        for i in range(TERRAIN_RES):
-            a = j * (TERRAIN_RES + 1) + i
+    for j in range(MRES):
+        for i in range(MRES):
+            a = j * (MRES + 1) + i
             b = a + 1
-            c = a + (TERRAIN_RES + 1)
+            c = a + (MRES + 1)
             d = c + 1
             tri += [a, c, b, b, c, d]
     # flat-shaded vertex colors from height (low-poly look)
-    cols = np.zeros((TERRAIN_RES + 1, TERRAIN_RES + 1, 4), dtype=np.float32)
-    h = heightmap
+    cols = np.zeros((MRES + 1, MRES + 1, 4), dtype=np.float32)
+    h = hm
     grass = np.array([0.24, 0.48, 0.16]); high = np.array([0.45, 0.58, 0.28])
     t = np.clip((h + 1) / (TERRAIN_AMP + 1), 0, 1)[:, :, None]
     rgb = grass * (1 - t) + high * t
@@ -420,7 +429,10 @@ def init_environment():
     side_tex = _load_tex_wrap(TRIPLANAR_SIDE_TEXTURE)
     terrain = Entity(model=build_terrain_mesh(), texture=top_tex,
                      shader=triplanar_terrain_shader)
-    terrain.double_sided = True  # no backface culling; hills never vanish at grazing angles
+    terrain.double_sided = False  # backface culling ON: winding is upward,
+    # camera never goes below the ground (FP cams clamp at ground+1.4), so
+    # the old double-sided grazing-angle insurance just doubled raster work
+    # in main + shadow pass
     terrain.set_shader_input('texture_scale',
                              Vec2(TRIPLANAR_TEXTURE_SCALE, TRIPLANAR_TEXTURE_SCALE))
     terrain.set_shader_input('side_texture_scale',
@@ -433,7 +445,8 @@ def init_environment():
         terrain.set_shader_input('side_texture', side_tex)
 
     backdrop = Entity(model=build_backdrop_mesh(), texture='white_cube')
-    backdrop.double_sided = True
+    backdrop.double_sided = False   # backface culling ON (winding outward,
+    # camera always inside the ring)
     # much thinner fog than the playfield so the range reads as a hazy silhouette
     backdrop.set_shader_input('fog_start', 800)
     backdrop.set_shader_input('fog_end', 5000)

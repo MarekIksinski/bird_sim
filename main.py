@@ -102,7 +102,14 @@ terrain.terrain.set_shader_input('fog_end', _FOG_RANGE[1])
 
 # Re-fit the sun's shadow lens now that the whole scene (terrain, props,
 # predators) exists — look_at() above fitted it to a near-empty scene.
+# The 4000m backdrop is EXCLUDED from the fit (re-enabled right after):
+# with it included the 2048px shadow map is smeared across 4km and the
+# shadow pass rasterizes the whole world every frame. Tight lens = arena
+# only; the backdrop ring falls outside it and is auto-culled from the
+# shadow pass (mountains are fog-drowned anyway, nobody sees their shadows).
+terrain.backdrop.enabled = False
 sun.update_bounds()
+terrain.backdrop.enabled = True
 
 # --- Ursina global callbacks (delegated; Ursina polls these by name) ---
 def input(key):

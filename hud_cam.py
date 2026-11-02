@@ -68,7 +68,9 @@ def init_hud_and_camera():
 def handle_input(key):
     global curr_mode
     if key == '1':
-        camera.parent = scene
+        # NO camera.parent = scene: ursina's camera must stay on its
+        # default camera_pivot or camera.fov / frustum culling break
+        # across modes (this detach was the 13fps camera-switch bug).
         camera.position = (0, 30, -50)
         camera.look_at((0,0,0))
         curr_mode = 0
@@ -143,7 +145,11 @@ def update_camera_and_hud():
     # dives get an extra FOV rush without blowing out the projection.
     speed_ratio = min(1.35, max(0.0, (_spd - _cruise) / max(_boost - _cruise, 1e-6)))
     target_fov = BASE_FOV + (BOOST_FOV - BASE_FOV) * speed_ratio
-    camera.fov = lerp(float(camera.fov), float(target_fov), cdt * 4.0)
+    new_fov = lerp(float(camera.fov), float(target_fov), cdt * 4.0)
+    # the ursina fov setter rebuilds the projection matrix every assign;
+    # skip it while the change is sub-perceptual
+    if abs(new_fov - float(camera.fov)) > 0.05:
+        camera.fov = new_fov
     if curr_mode == 1:
         # pack chase: follow the current generation's best genome.
         # The offset lives in the HAWK's body frame (behind -f, above +u) and
@@ -285,7 +291,10 @@ def update_camera_and_hud():
     else:
         _trk = predators.sel_idx if curr_mode == 2 else predators.best_idx
         _stam, _cool = float(predators.pack_stamina[_trk]), bool(predators.pack_exhausted[_trk])
-    _line = (f'Gen: {predators.generation} | Time: {GENERATION_SECONDS - predators.gen_elapsed:.1f}s | '
+    # integer seconds: the Text.text setter regenerates Panda3D TextNode
+    # geometry on EVERY assignment; a 0.1s clock re-meshed ~10x/s for a
+    # number nobody reads mid-decimal.
+    _line = (f'Gen: {predators.generation} | Time: {int(GENERATION_SECONDS - predators.gen_elapsed)}s | '
              f'Best Kills: {int(predators.gen_kills[predators.best_idx])} | Flock Evo: {flock.starling_evolutions} | '
              f'Fox Evo: {foxes.fox_evolutions} | Wolf Evo: {wolves.wolf_evolutions} | '
              f'Stamina: {int(round(_stam * 100))}%' + (' [COOL]' if _cool else '') +

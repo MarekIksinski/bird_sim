@@ -513,7 +513,8 @@ class WolfVisuals(Entity):
         verts[:, :, 2] = -x * s[:, None] + z * c[:, None]
         verts += wolf_pos[:, None, :]
         verts[:, :, 1] += hop[:, None]
-        self.model.vertices = verts.reshape(-1, 3).tolist()
+        # flat float32 NumPy fast path (see FlockVisuals.render note)
+        self.model.vertices = verts.reshape(-1)
         # per-wolf vertex colors: howling (|signal| > 0.5) wolves light up
         # ice-blue so the vocal channel is VISIBLE on the terrain. Ursina
         # Mesh wants ONE color per VERTEX (W*3), not per wolf.
@@ -522,5 +523,5 @@ class WolfVisuals(Entity):
                        np.tile(np.array(self._howl, dtype=np.float32), (NUM_WOLVES, 1)),
                        np.tile(np.array(self._coat, dtype=np.float32), (NUM_WOLVES, 1)))
         col = np.repeat(col, self.wolf_shape.shape[0], axis=0)   # (W*3, 4)
-        self.model.colors = [tuple(c4) for c4 in col]
+        self.model.colors = col.reshape(-1)   # flat float32 (ursina memoryview path)
         self.model.generate()

@@ -208,6 +208,11 @@ EVOLVE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 TERRAIN_SIZE = _get('terrain', 'size', 1000)        # field width/depth; RES auto-scales
 TERRAIN_CELL = _get('terrain', 'cell', 1.2)         # meters per grid cell (lower = more detail)
 TERRAIN_RES = int(TERRAIN_SIZE / TERRAIN_CELL)      # grid cells per side
+# Visual mesh resolution cap: physics keeps the full TERRAIN_RES heightmap
+# (height_at + all harness pins untouched), but the RENDERED terrain mesh is
+# sampled onto this coarser grid (1000m / 256 = 3.9m triangles — visually
+# identical at flight distance, 10x fewer triangles in main + shadow pass).
+TERRAIN_MESH_RES = min(TERRAIN_RES, int(_get('terrain', 'mesh_res', 256)))
 TERRAIN_AMP = _get('terrain', 'amplitude', 10.0)    # max hill height
 TERRAIN_SEED = _get('terrain', 'seed', 7)           # change for a different world
 ROOST_CLEAR_RADIUS = _get('terrain', 'roost_clear_radius', 30.0)  # flat bowl for the flock

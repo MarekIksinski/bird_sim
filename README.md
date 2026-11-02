@@ -387,6 +387,12 @@ main.py       entrypoint orchestrator (init order + global input/update)
   steady state = 1 substep/frame, turbo = K substeps/frame, frame-spike
   deficit cap, idle/auto/forced keypress rules, dt never > FIXED_DT.
   Run: `.venv/bin/python tools/verify_turbo.py`
+- `tools/verify_render_fast.py` — render fast-path gate (offscreen Ursina):
+  flat float32 NumPy vertex/color uploads through Mesh.generate (buffer
+  readback proves frames actually update), terrain visual mesh capped to
+  TERRAIN_MESH_RES while the physics heightmap pin stays bit-identical,
+  and the sun's shadow film fitted to the arena (backdrop excluded).
+  Run: `.venv/bin/python tools/verify_render_fast.py`
 - `tools/gen_rock_texture.py` — regenerates `assets/textures/rock_procedural.png`
   (seamless numpy-fBm rock/cliff texture for the triplanar side; prints a
   seam-continuity self-check). Run: `.venv/bin/python tools/gen_rock_texture.py`

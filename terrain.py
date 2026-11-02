@@ -97,7 +97,12 @@ def build_terrain_mesh():
             b = a + 1
             c = a + (MRES + 1)
             d = c + 1
-            tri += [a, c, b, b, c, d]
+            # WINDING: Panda treats CCW-as-seen-from-front as front face.
+            # The old [a,c,b, b,c,d] made front faces point DOWN, so with
+            # backface culling on (double_sided=False) ~half the ground was
+            # culled -> transparent terrain + black holes. Flipped: front
+            # faces point UP; culling halves raster work as intended.
+            tri += [a, b, c, b, d, c]
     # flat-shaded vertex colors from height (low-poly look)
     cols = np.zeros((MRES + 1, MRES + 1, 4), dtype=np.float32)
     h = hm
@@ -172,7 +177,7 @@ def build_backdrop_mesh():
             b = a + 1
             c = a + (BACKDROP_RES + 1)
             d = c + 1
-            tri += [a, c, b, b, c, d]
+            tri += [a, b, c, b, d, c]   # same CCW-up winding as the terrain
     cols = np.zeros((BACKDROP_RES + 1, BACKDROP_RES + 1, 4), dtype=np.float32)
     h = backdrop_hm
     rock = np.array([0.12, 0.14, 0.18]); snow = np.array([0.45, 0.48, 0.55])

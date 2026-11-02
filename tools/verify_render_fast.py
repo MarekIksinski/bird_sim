@@ -87,6 +87,24 @@ import hashlib
 check('heightmap pin unchanged',
       hashlib.sha256(terrain.heightmap.tobytes()).hexdigest().startswith('654dae6f40d9b26f'))
 
+# ---------- 3b. triangle winding: front faces must point UP ----------
+# Panda culls CW-as-seen-from-front faces when double_sided=False. The
+# 2026-11-02 regression ([a,c,b, b,c,d]) made front faces point DOWN ->
+# half the ground culled -> transparent terrain + black holes. Every
+# terrain/backdrop quad must wind CCW-up: cross(b-a, c-a).y > 0.
+def _check_winding(tri_list, verts_flat, name):
+    v = np.asarray(verts_flat, dtype=np.float64).reshape(-1, 3)
+    t = np.asarray(tri_list, dtype=np.int64).reshape(-1, 3)
+    a, b, c = v[t[:, 0]], v[t[:, 1]], v[t[:, 2]]
+    ny = ((b[:, 0] - a[:, 0]) * (c[:, 2] - a[:, 2]) -
+          (b[:, 2] - a[:, 2]) * (c[:, 0] - a[:, 0]))
+    return bool(np.all(ny > 0)), f'{name} triangles all wind CCW-up'
+
+tb = terrain.build_terrain_mesh()
+bb = terrain.build_backdrop_mesh()
+_c, _n = _check_winding(tb.triangles, tb.vertices, 'terrain'); check(_n, _c)
+_c, _n = _check_winding(bb.triangles, bb.vertices, 'backdrop'); check(_n, _c)
+
 # ---------- 4. shadow lens fitted to the arena, not the backdrop ----------
 terrain.init_environment()   # builds terrain/backdrop/props entities
 check('backdrop exists after init_environment', terrain.backdrop is not None)

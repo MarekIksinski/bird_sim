@@ -44,13 +44,16 @@ import wolves
 import player
 import hud_cam
 import simstep
-app = Ursina(vsync=False, development_mode=False, editor_ui_enabled=True)
+app = Ursina(vsync=False, development_mode=False, editor_ui_enabled=True, fullscreen=False)
 # development_mode=False: the hot reloader walks the project tree, the
 # frame hook runs garbageCollect() + entity/collider/fps counter scans
 # EVERY frame (measured in the live cProfile: pathlib.walk + GC churn per
 # frame). Nothing here needs live reload. editor_ui_enabled=True brings
 # back the fps counter + exit button without any of that; the exit button
 # is force-enabled below because ursina gates it on development_mode.
+# fullscreen=False: dev-mode=False would otherwise silently switch the
+# window to fullscreen borderless (1920x1080 vs the old 1280x720 = 2.25x
+# the pixels to shade), which drops fps.
 window.exit_button.enabled = True
 
 # --- advanced lighting: every entity built AFTER this point gets the

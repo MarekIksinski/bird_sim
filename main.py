@@ -55,6 +55,10 @@ app = Ursina(vsync=False, development_mode=False, editor_ui_enabled=True, fullsc
 # window to fullscreen borderless (1920x1080 vs the old 1280x720 = 2.25x
 # the pixels to shade), which drops fps.
 window.exit_button.enabled = True
+# ursina parks the fps counter at y=.47 — with the exit button visible it
+# sits right under it. Nudge it 50px down (UI camera y range is +/-0.5 of
+# window height, so convert pixels via window.size.y).
+window.fps_counter.y -= 50.0 / window.size.y
 
 # --- advanced lighting: every entity built AFTER this point gets the
 # shadow-casting lit shader by default (Text/Sky pin their own shaders in

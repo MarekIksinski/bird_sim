@@ -31,7 +31,7 @@ from time import perf_counter as _perf_counter   # wall budget for turbo
                                                  # `time` has no perf_counter)
 from config import _FOG_RANGE, SHADOW_BIAS, SHADOW_MAP_SIZE
 
-from ursina import Ursina, Entity, Vec2, Vec3, scene, time
+from ursina import Ursina, Entity, Vec2, Vec3, scene, time, window
 from ursina.lights import DirectionalLight
 from ursina.shaders import lit_with_shadows_shader
 
@@ -44,7 +44,14 @@ import wolves
 import player
 import hud_cam
 import simstep
-app = Ursina(vsync=False)
+app = Ursina(vsync=False, development_mode=False, editor_ui_enabled=True)
+# development_mode=False: the hot reloader walks the project tree, the
+# frame hook runs garbageCollect() + entity/collider/fps counter scans
+# EVERY frame (measured in the live cProfile: pathlib.walk + GC churn per
+# frame). Nothing here needs live reload. editor_ui_enabled=True brings
+# back the fps counter + exit button without any of that; the exit button
+# is force-enabled below because ursina gates it on development_mode.
+window.exit_button.enabled = True
 
 # --- advanced lighting: every entity built AFTER this point gets the
 # shadow-casting lit shader by default (Text/Sky pin their own shaders in

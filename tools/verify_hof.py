@@ -86,17 +86,19 @@ predators.hof_fitness = 9.0
 print("T1b OK: diversity parents, immigrant slot (crossover + fresh fallback), weight clip on mutation")
 
 # --- 2. retention + EMA + challenger promotion -------------------------------
-# King (in slot 0 now) flies badly (fitness 1); best challenger scores 5.
+# King (in slot 0 now) flies badly (fitness 1); best challenger scores 3 —
+# below the post-EMA crown for any keep >= ~0.35 (keep 0.7: 6.6, keep 0.4:
+# 4.2), so the retain path is exercised whatever hof_decay_keep is tuned to.
 prev_hof = predators.hof_fitness   # 9.0
 prev_king = predators.hof_genome.copy()
 pop6 = base_pop(6); pop6[0] = prev_king
 predators.population = pop6
-predators.fitness[:] = np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 5])
+predators.fitness[:] = np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 3])
 fit6 = predators.fitness.copy()
 predators.evolve_generation()
-expect_ema = config.HOF_DECAY_KEEP * prev_hof + (1 - config.HOF_DECAY_KEEP) * 1.0  # 6.6
-assert predators.hof_fitness == expect_ema, "EMA blend wrong (retain case)"
-assert np.array_equal(predators.hof_genome, prev_king), "King must RETAIN crown (5 < 6.6)"
+expect_ema = config.HOF_DECAY_KEEP * prev_hof + (1 - config.HOF_DECAY_KEEP) * 1.0
+assert abs(predators.hof_fitness - expect_ema) < 1e-9, "EMA blend wrong (retain case)"
+assert np.array_equal(predators.hof_genome, prev_king), f"King must RETAIN crown (3 < {expect_ema:.1f})"
 # retain path: king_slot = 0 -> challengers promoted past slot 0.
 # (order ties among the zero-fitness slots are unstable in argsort, so
 # derive the expected parents from the same order array the code uses.)

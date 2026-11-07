@@ -90,6 +90,10 @@ boundary_penalty = 10      # per-frame penalty for scraping wall/ceiling
 boundary_scrape_dist = 15.0  # meters from wall (or below ceiling) counted as scraping
 persist = true              # keep evolved weights between runs
 save_folder = "evolution"   # folder next to main.py: population.npz + history.csv
+hof_decay_keep = 0.4        # King-of-the-Hill EMA: fraction of the crown kept per
+                            # generation. 0.7 (old default) erased a 454k record
+                            # in 5 gens of noise (overnight run 2026-11-07);
+                            # 0.4 lets a crown survive ~2-3 bad gens.
 
 [hawk_vs_flock]
 panic_radius = 12.0       # birds inside this flee
@@ -100,8 +104,11 @@ catch_radius = 1.2        # touch = catch, bird respawns
 [flock_nn]
 num_tribes = 20           # one shared MLP per tribe; birds split into contiguous blocks
 mutation_sigma = 0.06     # gaussian noise on offspring tribe weights
-replace_deaths = 5        # tribe loses this many birds -> replaced by mutated top-3 parent
-casualty_decay = 0.0005     # per-second exponential fade of the casualty counter (0 = never decay)
+replace_deaths = 8          # tribe loses this many birds -> replaced by mutated top-3 parent
+casualty_decay = 0.002      # per-second exponential fade of the casualty counter (0 = never decay)
+                            # 0.0005 (half-life 23min) vs 600s gens churned 1-2 full
+                            # tribe turnovers PER generation (overnight 2026-11-07);
+                            # 0.002 = ~6min half-life, comparable to one generation.
 hidden_layers = [32, 24, 16]  # starling tribe MLP hidden widths: (22 sensors) -> ... -> (6 outputs).
                           # Any depth/width works; changing it changes STARLING_GENOME_LEN, so the
                           # starling_tribes.npz shape guard starts the tribes FRESH.

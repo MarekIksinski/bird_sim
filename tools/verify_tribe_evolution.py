@@ -44,9 +44,13 @@ fn = toml.get('flock_nn', {})
 assert config.TRIBE_REPLACE_DEATHS == int(fn.get('replace_deaths', 5)), \
     f"replace_deaths mismatch: config={config.TRIBE_REPLACE_DEATHS}"
 assert abs(config.CASUALTY_DECAY - float(fn.get('casualty_decay', 0.0005))) < 1e-12
-# The whole point of 0.0005/s: a ~23-minute half-life (ln2/0.0005 = 1386s),
-# vs ~35s at the old 0.02/s which decayed kills faster than ~4/30s gens accrue.
-assert np.log(2.0) / config.CASUALTY_DECAY > 600.0, 'decay half-life too short'
+# Half-life policy band: must stay far above the old 0.02/s failure mode
+# (~35s, decayed kills faster than short gens accrued them) AND not so long
+# that casualties never fade across a 600s generation (0.0005/s = 1386s
+# half-life churned 1-2 full tribe turnovers per gen, overnight 2026-11-07).
+_hl = np.log(2.0) / config.CASUALTY_DECAY
+assert 120.0 < _hl < 3.0 * config.GENERATION_SECONDS, \
+    f'decay half-life {_hl:.0f}s outside sane band (120s .. 3 gens)'
 print(f"PASS config: replace_deaths={config.TRIBE_REPLACE_DEATHS}, "
       f"casualty_decay={config.CASUALTY_DECAY} "
       f"(half-life {np.log(2.0)/config.CASUALTY_DECAY:.0f}s)")

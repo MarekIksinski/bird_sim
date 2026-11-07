@@ -114,7 +114,7 @@ All factors read `[daynight]` config; modulation applies to PHYSICS only, never 
 3. Turbo harness section can live inside verify_daynight.py (offscreen, no Ursina needed once
    sim_step is Ursina-free — the Task 2 refactor makes this the first Ursina-free harness).
 
-## Task 9 — Finish the repo (per project convention) [PARTIAL: README day/night/turbo items still pending]
+## Task 9 — Finish the repo (per project convention) [DONE 2026-11-06: README gaps fixed (daynight/turbo config knobs, verify_backdrop entry); full suite 22/25 green, the 3 failures (player/refactor/visuals) reproduce IDENTICALLY on baseline b72e842 (git worktree proof) — pre-existing real assertion failures, NOT the old X segfault: verify_player cruise-speed assert, verify_refactor temp checkpoint never written, verify_visuals dust pool 96/96 cap. Flagged for a separate fix pass.]
 1. README.md: day/night feature bullet, `[daynight]` config section, turbo keys in Controls table,
    architecture layer diagram (daynight.py placement), tools/ harness list + run commands.
 2. Move any scratch harness into tools/, re-run from new path.

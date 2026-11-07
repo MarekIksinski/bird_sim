@@ -150,7 +150,12 @@ live for `tail -f`) and `history.csv` (one rich row per generation for
 charting). Everything respects `[pack] persist = false`.
 
 All tunables live in `config.toml` (flock, flock_nn, hawk, player, pack,
-rabbits, foxes, wolves, terrain, visuals, colors, game). Gravity/dive knobs: `[hawk]` `gravity`, `dive_max_speed`,
+rabbits, foxes, wolves, terrain, daynight, turbo, visuals, colors, game).
+Day/night knobs: `[daynight]` `day_seconds`, `night_seconds`,
+`transition_seconds` + the hard-ecology night multipliers
+(`roost_night_mult`, `cruise_night_mult`, `hawk_night_speed_mult`,
+`pred_night_sense_mult`). Turbo knobs: `[turbo]` `turbo_factor`,
+`turbo_idle_seconds`, `turbo_max_catchup`. Gravity/dive knobs: `[hawk]` `gravity`, `dive_max_speed`,
 `min_flight_speed`, `stall_speed`, `lift_grip`, `induced_drag` (all shared
 by the player) and `[flock]`
 `gravity`, `min_bird_speed`, `dive_speed_mult`, `climb_speed_mult`.
@@ -357,6 +362,11 @@ main.py       entrypoint orchestrator (init order + global input/update)
   (age-bias regression), the 10s maturity gate + fallback pool, the
   close-call evasion bonus formula, and the starling checkpoint round-trip.
   Run: `.venv/bin/python tools/verify_tribe_evolution.py`
+- `tools/verify_backdrop.py` — backdrop poke-through gate (no window): every
+  coarse backdrop vertex touching the playable square pinned at the deep
+  floor, `height_at()` == playfield inside it, mountain ring intact outside,
+  cutout derives from config TERRAIN_SIZE.
+  Run: `.venv/bin/python -u tools/verify_backdrop.py`
 - `tools/verify_terrain_backdrop.py` — ground-surface gate: `height_at()`
   = max(playfield, backdrop) with bit-identical mesh hashes (visual shell
   unchanged), play-wins-at-center / backdrop-wins-in-the-four arena

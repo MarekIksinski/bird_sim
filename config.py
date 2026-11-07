@@ -366,6 +366,9 @@ COLOR_HUD_INFO   = _color('colors', 'hud_info',   (255, 255, 255, 120))
 COLOR_HUD_GEN    = _color('colors', 'hud_gen',    (255, 220, 120, 200))
 COLOR_HUD_KILLS  = _color('colors', 'hud_kills',  (255, 0, 0))
 COLOR_DUST       = _color('colors', 'dust',       (200, 176, 144, 150))
+COLOR_TURBO_AUTO = _color('colors', 'turbo_auto', (150, 150, 165, 200))
+COLOR_TURBO_ON   = _color('colors', 'turbo_on',   (60, 220, 90, 230))
+COLOR_TURBO_OFF  = _color('colors', 'turbo_off',  (90, 90, 95, 170))
 
 # --- 1f. VISUALS ([visuals]: triplanar terrain + sun shadows + sprint dust) ---
 TRIPLANAR_TOP_TEXTURE = str(_get('visuals', 'triplanar_top_texture', 'grass'))

@@ -239,3 +239,6 @@ rock        = "#646973"
 hud_info    = [255, 255, 255, 120]   # bottom control-hint line
 hud_gen     = [255, 220, 120, 200]   # gen/fitness line
 hud_kills   = "#ff0000"              # catch counter
+turbo_auto  = [150, 150, 165, 200]   # TURBO button, auto mode (idle-gated)
+turbo_on    = [60, 220, 90, 230]     # TURBO button, forced on
+turbo_off   = [90, 90, 95, 170]      # TURBO button, forced off

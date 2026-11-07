@@ -176,6 +176,7 @@ first-person, `4` player chase, `5` player first-person, `6` fox chase,
 | TAB | cycle the tracked entity: the AI hawk, or the fox in the fox cams, or the wolf in the wolf cams |
 | R | respawn the player hawk (remappable: `[player] reset_keys`) |
 | T | toggle turbo fast-forward (see Day/night & turbo) |
+| TURBO button (top-left) | cycle turbo mode: auto -> ON -> off -> auto |
 | ESC | quit |
 
 Player flight (default bindings, all remappable in `[player]`):
@@ -208,6 +209,13 @@ at a FIXED dt (physics/fitness are identical per simulated second at any
 speed; only wall-clock rate changes). Any keypress drops it instantly;
 `T` forces it on/off in any camera (spectator fast-forward). The HUD badge
 `[TURBO xK]` makes a jumping clock never a mystery.
+
+Tri-state control: the `TURBO` button in the top-left corner (same overlay
+layer as the exit button) cycles `auto -> ON -> off -> auto`. ON turbo
+ignores idle/camera; off pins 1x even when idle. The label brightens
+(`auto*`) while auto-turbo is actually running; colors are config
+`[colors] turbo_auto/turbo_on/turbo_off`. Clicking is a mouse event, not
+a keypress, so it never disturbs the idle timer.
 
 ## Files / architecture
 

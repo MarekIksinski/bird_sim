@@ -31,15 +31,17 @@ import player
 
 FIXED_DT = 1.0 / 60.0
 
-# --- idle turbo state (todo Task 6) -------------------------------------
-# turbo_active is READ by the HUD badge; written only by begin_frame.
-# Three-way control per the agreed design:
-#   auto   -> turbo once idle (no key event) for turbo_idle_seconds AND
-#             the camera is the fixed one (curr_mode 0)
-#   forced -> 't' toggle: on regardless of idle/camera (spectator FF)
-#   any keypress drops auto-turbo instantly (forced survives, 't' off)
+# --- idle turbo state (todo Task 6 + turbo button Task 10) --------------
+# turbo_active is READ by the HUD badge/button; written only by begin_frame.
+# Three-way control (turbo_mode), cycled by the on-screen TURBO button:
+#   auto -> turbo once idle (no key event) for turbo_idle_seconds AND
+#           the camera is the fixed one (curr_mode 0)
+#   on   -> turbo always, regardless of idle/camera (spectator FF)
+#   off  -> never turbo
+# The 't' key toggles between forced on and auto (from 'off' it goes on).
+# Any keypress drops auto-turbo instantly (mode stays; 'on' keeps running).
 turbo_active = False
-_turbo_forced = False
+turbo_mode = 'auto'      # 'auto' | 'on' | 'off'
 _last_activity = None   # anchored on the first begin_frame (ursina clock
                         # may not be live at import)
 _accum = 0.0
@@ -49,17 +51,21 @@ def note_activity():
     """Call from the input handler: any key event marks the player active."""
     global _last_activity, turbo_active
     _last_activity = _clock.time()
-    if not _turbo_forced:
+    if turbo_mode == 'auto':
         turbo_active = False
+
+
+def cycle_turbo_mode():
+    """TURBO button click: auto -> on -> off -> auto. Mouse clicks are NOT
+    key events, so this deliberately does not touch the idle timer."""
+    global turbo_mode
+    turbo_mode = {'auto': 'on', 'on': 'off', 'off': 'auto'}[turbo_mode]
 
 
 def toggle_turbo():
     """'t' key: spectator fast-forward, works in any camera, ignores idle."""
-    global _turbo_forced, turbo_active
-    _turbo_forced = not _turbo_forced
-    turbo_active = _turbo_forced
-    if not _turbo_forced:
-        turbo_active = False
+    global turbo_mode
+    turbo_mode = 'on' if turbo_mode != 'on' else 'auto'
 
 
 def begin_frame(wall_dt, curr_mode):
@@ -71,9 +77,11 @@ def begin_frame(wall_dt, curr_mode):
     if _last_activity is None:
         _last_activity = _clock.time()   # anchor idle timing to first frame
     wall_dt = min(max(wall_dt, 0.0), 0.1)   # Ursina frame-spike clamp
-    if not _turbo_forced:
+    if turbo_mode == 'auto':
         idle = (_clock.time() - _last_activity) >= config.TURBO_IDLE_SECONDS
         turbo_active = idle and curr_mode == 0
+    else:
+        turbo_active = (turbo_mode == 'on')
     speed = float(config.TURBO_FACTOR) if turbo_active else 1.0
     _accum += wall_dt * speed
     # deficit cap: a heavy frame can never bank unbounded catch-up work

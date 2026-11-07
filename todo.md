@@ -114,9 +114,50 @@ All factors read `[daynight]` config; modulation applies to PHYSICS only, never 
 3. Turbo harness section can live inside verify_daynight.py (offscreen, no Ursina needed once
    sim_step is Ursina-free — the Task 2 refactor makes this the first Ursina-free harness).
 
-## Task 9 — Finish the repo (per project convention)
+## Task 9 — Finish the repo (per project convention) [PARTIAL: README day/night/turbo items still pending]
 1. README.md: day/night feature bullet, `[daynight]` config section, turbo keys in Controls table,
    architecture layer diagram (daynight.py placement), tools/ harness list + run commands.
 2. Move any scratch harness into tools/, re-run from new path.
 3. Full verify suite as one background command with notify=true, one log per harness (~10 min).
 4. Commit + push to `testing` (report whether prior unpushed commits rode along).
+
+---
+
+# Turbo button — design (agreed 2026-11-06)
+
+A clickable TURBO button in the top-left corner, same widget family as ursina's exit button
+(`Button(parent=window.editor_ui, eternal=True, z=-999)` — window.py:162 pattern). Tri-state cycle
+matching keyboard semantics: auto -> forced ON -> forced OFF -> auto. The auto state (idle + fixed
+camera) currently has NO manual entry point; the button becomes it.
+
+## Task 10 — simstep.py: tri-state turbo_mode [DONE 2026-11-06]
+1. Replace `_turbo_forced` bool with `turbo_mode` string: 'auto' | 'on' | 'off' (module global).
+   - 'auto': begin_frame gates on idle AND curr_mode==0 (unchanged rule).
+   - 'on': turbo regardless of idle/camera. 'off': never turbo.
+2. `cycle_turbo_mode()`: auto->on->off->auto. `toggle_turbo()` ('t' key) keeps today's feel:
+   toggles between forced on and auto (t from 'off' -> on). note_activity() unchanged except it
+   only clears turbo_active when turbo_mode == 'auto'.
+3. Keep every existing read of turbo_active working (HUD badge, begin_frame). No config changes.
+
+## Task 11 — button widget [DONE 2026-11-06; landed in hud_cam.py init_hud_and_camera(), not main.py — HUD layer owns widgets]
+1. Right after `window.exit_button.enabled = True`: `turbo_button = Button(text=..., parent=window.editor_ui,
+   eternal=True, ignore_paused=True, z=-999, scale=(.09,.03))` positioned top-left
+   (x = -(0.5*aspect_ratio) + margin, y near exit's .47). Mirror exit_button's styling knobs.
+2. `on_click=simstep.cycle_turbo_mode` — mouse click is NOT a keypress, so it deliberately does NOT
+   call note_activity(); the idle timer is untouched by clicking.
+3. Label/color readout driven per-frame from hud_cam.update_camera_and_hud() (single source of truth,
+   can never desync): 'TURBO: auto' muted gray, 'TURBO: ON' bright (tint by turbo_active: glowing
+   while actually stepping fast), 'TURBO: OFF' dark. main.py does not import `window` yet? — it does
+   (line 57); add `Button` + `color` to the ursina from-import as needed. Colors from config [colors]
+   if trivial, else reuse hud colors.
+
+## Task 12 — Harness + verification [DONE 2026-11-06: verify_turbo 4b section 27/27; live ui_check screenshot shows 'TURBO auto' top-left, no overlap. NOTE: fixed pre-existing verify_fox_cams.py broken import (imports were commented onto the pin_full_day line)]
+1. Extend tools/verify_turbo.py (Ursina-free): tri-state cycle transitions; auto rule unchanged;
+   'off' survives note_activity; 't' from each state. Expectations derived from config as usual.
+2. Live-window screenshot (scratch/ui_check.py pattern: exec main.py into __main__.__dict__, SIGALRM
+   ~8s base.screenshot + userExit) then vision_analyze the top-left corner — button visible, no
+   overlap with terrain/HUD.
+
+## Task 13 — Finish the repo [DONE 2026-11-06]
+1. README: Controls table gains the turbo button row; feature bullet.
+2. Commit + push to `testing`.

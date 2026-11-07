@@ -49,13 +49,13 @@ check('1x yields exactly 1 substep per frame', set(counts) == {1})
 
 # ---------- 2. turbo: same sim-time per wall-time, rate-independent ----------
 simstep._accum = 0.0
-simstep._turbo_forced = True
+simstep.turbo_mode = 'on'
 simstep.turbo_active = True
 n_turbo = sum(simstep.begin_frame(FIX, 1) for _ in range(60))
 check(f'turbo 60 frames ~ 60*K substeps ({n_turbo})',
       abs(n_turbo - 60 * K) <= 2)
 check('turbo speedup = turbo_factor', abs(n_turbo / 60 - K) < 0.1)
-simstep._turbo_forced = False
+simstep.turbo_mode = 'auto'
 simstep.turbo_active = False
 
 # ---------- 3. frame-spike deficit cap ----------
@@ -67,7 +67,7 @@ check(f'5 s spike capped ({n_spike} substeps, cap {config.TURBO_MAX_CATCHUP/FIX:
 # ---------- 3b. 1x spiral guard: NEVER more than 1 substep at 1x ----------
 simstep._accum = 0.0
 simstep.turbo_active = False
-simstep._turbo_forced = False
+simstep.turbo_mode = 'auto'
 n_1x_spike = simstep.begin_frame(0.1, 1)   # slow frame at 1x
 check('1x spiral guard: heavy frame yields at most 1 substep', n_1x_spike == 1)
 check('1x spiral guard drops the banked remainder', simstep._accum == 0.0)
@@ -104,7 +104,46 @@ simstep.note_activity()
 simstep.begin_frame(FIX, 1)
 check('forced turbo survives keypress + any camera', simstep.turbo_active is True)
 simstep.toggle_turbo()
-check('second toggle turns forced turbo off', simstep.turbo_active is False)
+check('second toggle returns mode to auto', simstep.turbo_mode == 'auto')
+simstep.begin_frame(FIX, 1)   # auto + chase cam -> active flag drops
+check('auto + chase cam clears turbo_active', simstep.turbo_active is False)
+
+# ---------- 4b. tri-state button cycle (Task 10/12) ----------
+simstep.turbo_mode = 'auto'
+simstep._accum = 0.0
+simstep._last_activity = 0.0
+_fc.t = 0.0
+simstep.cycle_turbo_mode()
+check('cycle auto -> on', simstep.turbo_mode == 'on')
+simstep.cycle_turbo_mode()
+check('cycle on -> off', simstep.turbo_mode == 'off')
+simstep.cycle_turbo_mode()
+check('cycle off -> auto (wraps)', simstep.turbo_mode == 'auto')
+# 'off' pins 1x even when idle + fixed cam (auto rule must NOT fire)
+_fc.t = config.TURBO_IDLE_SECONDS + 5.0
+simstep.cycle_turbo_mode()   # auto -> on
+simstep.cycle_turbo_mode()   # on -> off
+n_off = simstep.begin_frame(FIX, 0)
+check("'off' suppresses turbo while idle+fixed cam", simstep.turbo_active is False)
+check("'off' yields 1 substep", n_off == 1)
+simstep.note_activity()
+check("'off' survives note_activity", simstep.turbo_mode == 'off')
+# 'on' forces turbo in a chase cam while actively pressing keys
+simstep.cycle_turbo_mode()   # off -> auto
+simstep.cycle_turbo_mode()   # auto -> on
+simstep.note_activity()
+n_forced = simstep.begin_frame(FIX, 1)   # chase cam, just pressed a key
+check("'on' forces turbo in chase cam while active", simstep.turbo_active is True)
+check("'on' frame yields K substeps", n_forced == K)
+# 't' from each state: on<->auto, off -> on
+simstep.turbo_mode = 'auto'; simstep.toggle_turbo()
+check("t from auto -> on", simstep.turbo_mode == 'on')
+simstep.toggle_turbo()
+check("t from on -> auto", simstep.turbo_mode == 'auto')
+simstep.turbo_mode = 'off'; simstep.toggle_turbo()
+check("t from off -> on", simstep.turbo_mode == 'on')
+simstep.turbo_mode = 'auto'
+simstep.turbo_active = False
 
 # ---------- 5. dt is never bigger than FIXED_DT ----------
 check('FIXED_DT = 1/60', abs(FIX - 1.0 / 60.0) < 1e-12)

@@ -8,12 +8,13 @@ callbacks that delegate to handle_input() and update_camera_and_hud().
 """
 import numpy as np
 from ursina import (Vec3, camera, color, application, lerp, Text,
-                    time, scene)
+                    time, scene, window, Button)
 from panda3d.core import Quat as PQuat
 
 from config import (POPULATION_SIZE, START_CAMERA, BASE_FOV, BOOST_FOV,
                     GENERATION_SECONDS, CRUISE_SPEED, PRED_BOOST,
-                    COLOR_HUD_INFO, COLOR_HUD_GEN, COLOR_HUD_KILLS)
+                    COLOR_HUD_INFO, COLOR_HUD_GEN, COLOR_HUD_KILLS,
+                    COLOR_TURBO_AUTO, COLOR_TURBO_ON, COLOR_TURBO_OFF)
 import config
 from math3d import _slerp_np, _q_rot_b
 import terrain
@@ -29,6 +30,30 @@ hawk_info = None
 gen_text = None
 kill_counter = None
 _last_gen_line = ''
+turbo_button = None
+_turbo_btn_line = ''
+
+
+def _refresh_turbo_button():
+    """Label/color of the TURBO button reads simstep state every frame —
+    single source of truth, can never desync from the physics scheduler."""
+    global _turbo_btn_line
+    if turbo_button is None:      # harnesses that never built the HUD
+        return
+    mode = simstep.turbo_mode
+    if mode == 'on':
+        txt, col = 'TURBO ON', color.rgba32(*COLOR_TURBO_ON)
+    elif mode == 'off':
+        txt, col = 'TURBO off', color.rgba32(*COLOR_TURBO_OFF)
+    else:  # auto: brighten while auto-turbo is actually running
+        if simstep.turbo_active:
+            txt, col = 'TURBO auto*', color.rgba32(*COLOR_TURBO_ON)
+        else:
+            txt, col = 'TURBO auto', color.rgba32(*COLOR_TURBO_AUTO)
+    if txt != _turbo_btn_line:
+        _turbo_btn_line = txt
+        turbo_button.text = txt
+        turbo_button.color = col
 
 
 def _day_clock_str():
@@ -56,13 +81,24 @@ curr_mode = max(0, min(8, START_CAMERA - 1))
 def init_hud_and_camera():
     """Create the HUD Text objects and set the initial camera pose.
     Call only AFTER app = Ursina(...) exists."""
-    global hawk_info, gen_text, kill_counter
+    global hawk_info, gen_text, kill_counter, turbo_button
     hawk_info = Text('1-3 Hawk cams  4/5 Player cams  6/7 Fox cams  8/9 Wolf cams  WASD/QE/Shift/Ctrl fly  TAB cycle  ESC quit',
                      origin=(0, 0), y=-0.45, size=0.035, color=color.rgba32(*COLOR_HUD_INFO))
     gen_text = Text('Gen: 1 | Time: 0.0s | Best Kills: 0', origin=(0, 0), y=-0.38, size=0.045,
                     color=color.rgba32(*COLOR_HUD_GEN))
     kill_counter = Text('catches: 0', origin=(0, 0), x=0, y=0.42, size=0.05,
                         color=color.rgba32(*COLOR_HUD_KILLS))
+    # TURBO tri-state button (auto -> on -> off), top-left mirror of ursina's
+    # exit button: same editor_ui overlay layer, eternal so it draws above
+    # the 3D scene. Mouse clicks are NOT key events, so clicking deliberately
+    # does NOT call simstep.note_activity() — the idle timer stays untouched.
+    turbo_button = Button(parent=window.editor_ui, text='TURBO auto',
+                          eternal=True, ignore_paused=True, origin=(-.5, .5),
+                          position=window.top_left + Vec3(0.015, -0.015, 0),
+                          z=-999, scale=(.09, .028),
+                          color=color.rgba32(*COLOR_TURBO_AUTO),
+                          on_click=simstep.cycle_turbo_mode,
+                          name='turbo_button')
     camera.position = (0, 35, -45)
 
 def handle_input(key):
@@ -99,6 +135,7 @@ def handle_input(key):
 
 def update_camera_and_hud():
     global _last_gen_line
+    _refresh_turbo_button()
     # Ursina's dt can spike huge after a heavy frame (CPU-fallback boids step)
     # — clamp it for ALL camera math so lerp can't extrapolate to inf.
     cdt = min(max(time.dt, 0.0), 0.1)

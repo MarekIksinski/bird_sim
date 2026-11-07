@@ -69,7 +69,7 @@ All factors read `[daynight]` config; modulation applies to PHYSICS only, never 
 5. Beware the rabbit-threshold slope rule: any rescale of d_fox_raw must keep slope 1:1 beyond
    eff_freeze_r or distant foxes fake Freeze.
 
-## Task 5 — Generation length + retune watch [DONE 2026-11-01: generation_seconds 90 -> 600; retune watch still OPEN after ~10 long gens]
+## Task 5 — Generation length + retune watch [DONE 2026-11-07: 21-gen overnight review (gen 6->26) -> retune landed 5a0b3f1: hof_decay_keep 0.4 (454k crown erased in 5 gens at 0.7), replace_deaths 8 + casualty_decay 0.002 (1-2 full tribe turnovers/gen at 0.0005); fox/wolf healthy, untouched. All todo items now closed.]
 1. `[pack] generation_seconds = 600` (2 full cycles per hawk lifetime).
 2. Known constants tuned against ~45 s generations — expect retunes after first long runs:
    - `[flock_nn] casualty_decay` (~23 min half-life) + `replace_deaths`: tribes will accumulate

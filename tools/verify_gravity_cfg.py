@@ -19,7 +19,17 @@ print('hawk stamina consts:', config.BOOST_DURATION, config.BOOST_RECHARGE,
 print('flock gravity consts:', config.FLOCK_GRAVITY, config.MIN_BIRD_SPEED,
       config.DIVE_SPEED_MULT, config.CLIMB_SPEED_MULT)
 # checkpoint mismatch: old 12-input population must be rejected -> fresh start
-import numpy as np, os
+import numpy as np, os, tempfile
+# NEVER touch the live ./evolution folder: redirect every checkpoint path +
+# the log to a tempdir BEFORE load_checkpoint (its [session] line used to
+# land in the real evolution.log and fake a resumed session in the user's log)
+_tmp = tempfile.mkdtemp(prefix='birdsim_gcfg_')
+predators._CKPT = os.path.join(_tmp, 'population.npz')
+predators._HISTORY = os.path.join(_tmp, 'history.csv')
+predators._STARLING_CKPT = os.path.join(_tmp, 'starling_tribes.npz')
+predators._FOX_CKPT = os.path.join(_tmp, 'fox_pairs.npz')
+predators._WOLF_CKPT = os.path.join(_tmp, 'wolf_pairs.npz')
+predators._LOG_FILE = os.path.join(_tmp, 'evolution.log')
 predators.load_checkpoint()
 old_len = 12*16+16 + 16*8+8 + 8*4+4
 if predators.population.shape[1] != predators.GENOME_LEN:

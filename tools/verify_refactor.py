@@ -47,6 +47,11 @@ import predators, flock, rabbits, hud_cam, terrain   # noqa: E402
 
 app = main.app
 assert app is not None
+# Ursina's task loop polls update() on __main__ BY NAME: importing main as
+# a module leaves the sim frozen (taskMgr.step = render only, post-simstep-
+# refactor physics lives in main.update). Wire it into this harness's
+# __main__ namespace so stepping actually advances the sim.
+globals()['update'] = main.update
 print("STEP1: modules imported, entities built OK")
 
 # entity sanity: terrain/backdrop/hawks/visuals exist

@@ -17,7 +17,8 @@ from ursina import Ursina, held_keys, camera
 app = Ursina()
 
 import backend, config, terrain, predators, flock
-import player, hud_cam
+import player, hud_cam, daynight
+daynight.pin_full_day()   # night speed-target gate must not skew these asserts
 
 terrain.init_environment()
 predators.init_pack_visuals()
@@ -29,6 +30,12 @@ from ursina import time as _utime
 def frame(fn):
     _utime.dt = 1.0 / 60.0   # deterministic frame: offscreen steps run ~1ms real
     fn()
+    if fn is player.update_player:
+        # post-simstep-split the entity quaternion/position sync lives in
+        # the render pass (main.py calls update_player_visuals each frame;
+        # offscreen there is no main, so mirror it or section 12's
+        # entity-vs-state compare reads a frozen spawn attitude)
+        player.update_player_visuals()
     step()
 
 # --- 1. spawn placement ---

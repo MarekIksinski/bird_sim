@@ -123,6 +123,8 @@ def step_fox():
     before = sum(1 for e in foxes._dust_pool.pips if e.enabled)
     foxes.update_foxes()
     foxes.fox_speed[:] = config.FOX_BOOST_SPEED
+    foxes._dust_pool.step(1 / 60)   # render-pass aging (FoxVisuals.render does
+                                    # this live; physics-only stepping must mirror it)
     after = sum(1 for e in foxes._dust_pool.pips if e.enabled)
     return before, after
 
@@ -144,6 +146,7 @@ def step_wolf():
     before = sum(1 for e in wolves._dust_pool.pips if e.enabled)
     wolves.update_wolves()
     wolves.wolf_speed[:] = config.WOLF_BOOST_SPEED
+    wolves._dust_pool.step(1 / 60)   # render-pass aging, see fox note
     return sum(1 for e in wolves._dust_pool.pips if e.enabled)
 w = step_wolf()
 assert w > 0, 'no wolf dust'
